@@ -85,4 +85,15 @@ router.get('/available-slots', async (req: Request, res: Response): Promise<void
   }
 });
 
+// @route   GET /api/public/cron/reminders — Scheduled reminder trigger (for Vercel Cron or external ping)
+router.get('/cron/reminders', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { runReminderCheck } = await import('../jobs/reminders');
+    const result = await runReminderCheck();
+    res.json({ success: true, data: result });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Error executing reminder check.' });
+  }
+});
+
 export default router;

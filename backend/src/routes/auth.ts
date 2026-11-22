@@ -34,7 +34,8 @@ router.post('/register', [
       emailVerificationToken: verificationToken,
       emailVerificationExpiry: new Date(Date.now() + 24 * 60 * 60 * 1000),
     });
-    const verifyUrl = `${process.env.FRONTEND_URL}/verify-email?token=${verificationToken}`;
+    const frontendBase = (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
+    const verifyUrl = `${frontendBase}/verify-email?token=${verificationToken}`;
     await sendEmail({
       to: user.email,
       subject: 'Verify Your Email — Iris Salon',
@@ -177,7 +178,8 @@ router.post('/forgot-password', [body('email').isEmail()], async (req: Request, 
     user.passwordResetToken = resetToken;
     user.passwordResetExpiry = new Date(Date.now() + 60 * 60 * 1000);
     await user.save({ validateBeforeSave: false });
-    const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
+    const frontendBase = (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
+    const resetUrl = `${frontendBase}/reset-password?token=${resetToken}`;
     await sendEmail({ to: user.email, subject: 'Password Reset — Iris Salon', html: `<p>Reset your password: <a href="${resetUrl}">${resetUrl}</a></p><p>Expires in 1 hour.</p>` });
     res.json({ success: true, message: 'If that email exists, a reset link has been sent.' });
   } catch (error) {

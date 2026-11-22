@@ -1,15 +1,19 @@
 import axios from 'axios';
 
+// Public HTTPS backend URL configured via NEXT_PUBLIC_API_URL
 const getBaseUrl = (): string => {
-  // When executing server-side (RSC / Server Actions / Route Handlers), use Vercel service binding
-  if (typeof window === 'undefined' && process.env.BACKEND_URL) {
-    return `${process.env.BACKEND_URL}/api`;
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '');
   }
-  // When executing in browser or local dev, use environment variable or same-domain relative path
-  return process.env.NEXT_PUBLIC_API_URL || '/api';
+  // When running on the same domain (via rewrites or reverse proxy)
+  if (typeof window !== 'undefined') {
+    return '/api';
+  }
+  // Local fallback for SSR/server-side development
+  return 'http://localhost:5000/api';
 };
 
-const API_BASE_URL = getBaseUrl();
+export const API_BASE_URL = getBaseUrl();
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
