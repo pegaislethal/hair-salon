@@ -1,6 +1,15 @@
 import axios from 'axios';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+const getBaseUrl = (): string => {
+  // When executing server-side (RSC / Server Actions / Route Handlers), use Vercel service binding
+  if (typeof window === 'undefined' && process.env.BACKEND_URL) {
+    return `${process.env.BACKEND_URL}/api`;
+  }
+  // When executing in browser or local dev, use environment variable or same-domain relative path
+  return process.env.NEXT_PUBLIC_API_URL || '/api';
+};
+
+const API_BASE_URL = getBaseUrl();
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
