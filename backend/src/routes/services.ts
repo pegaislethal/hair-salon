@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import Service from '../models/Service';
-import { authenticate, isAdminOrSubAdmin } from '../middleware/auth';
+import { authenticate, isSuperAdmin } from '../middleware/auth';
 
 const router = Router();
 
@@ -31,7 +31,7 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
 });
 
 // @route   POST /api/services — Admin only
-router.post('/', authenticate, isAdminOrSubAdmin, [
+router.post('/', authenticate, isSuperAdmin, [
   body('name').trim().notEmpty().withMessage('Name is required'),
   body('description').trim().notEmpty().withMessage('Description is required'),
   body('price').isNumeric().withMessage('Price must be a number'),
@@ -48,7 +48,7 @@ router.post('/', authenticate, isAdminOrSubAdmin, [
 });
 
 // @route   PUT /api/services/:id — Admin only
-router.put('/:id', authenticate, isAdminOrSubAdmin, async (req: Request, res: Response): Promise<void> => {
+router.put('/:id', authenticate, isSuperAdmin, async (req: Request, res: Response): Promise<void> => {
   try {
     const service = await Service.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
     if (!service) { res.status(404).json({ success: false, message: 'Service not found.' }); return; }
@@ -59,7 +59,7 @@ router.put('/:id', authenticate, isAdminOrSubAdmin, async (req: Request, res: Re
 });
 
 // @route   DELETE /api/services/:id — Admin only (soft delete)
-router.delete('/:id', authenticate, isAdminOrSubAdmin, async (req: Request, res: Response): Promise<void> => {
+router.delete('/:id', authenticate, isSuperAdmin, async (req: Request, res: Response): Promise<void> => {
   try {
     const service = await Service.findByIdAndUpdate(req.params.id, { isActive: false }, { new: true });
     if (!service) { res.status(404).json({ success: false, message: 'Service not found.' }); return; }

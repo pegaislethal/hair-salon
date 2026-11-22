@@ -29,7 +29,8 @@ export const Sidebar: React.FC = () => {
     { name: 'Appointments', href: '/admin/appointments', icon: CalendarCheck },
     { name: 'Calendar View', href: '/admin/calendar', icon: CalendarDays },
     { name: 'Services', href: '/admin/services', icon: Scissors },
-    { name: 'Staff Management', href: '/admin/staff', icon: Users },
+    { name: 'Barber Management', href: '/admin/staff', icon: Users },
+    { name: 'Recruitment', href: '/admin/recruitment', icon: Users },
     { name: 'Customers', href: '/admin/customers', icon: UserCheck },
     { name: 'Gallery Management', href: '/admin/gallery', icon: ImageIcon },
     { name: 'Reports & Analytics', href: '/admin/reports', icon: BarChart3 },
@@ -43,6 +44,8 @@ export const Sidebar: React.FC = () => {
     { name: 'Appointments', href: '/sub-admin/appointments', icon: CalendarCheck },
     { name: 'Calendar View', href: '/sub-admin/calendar', icon: CalendarDays },
     { name: 'Customer Info', href: '/sub-admin/customers', icon: UserCheck },
+    { name: 'Barber Schedules', href: '/sub-admin/barbers', icon: Users },
+    { name: 'Recruitment Info', href: '/sub-admin/recruitment', icon: Users },
     { name: 'My Profile', href: '/sub-admin/profile', icon: Settings },
   ];
 

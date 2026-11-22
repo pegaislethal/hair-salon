@@ -6,12 +6,13 @@ import { PublicLayout } from '../../layouts/PublicLayout';
 import { Service } from '../../types';
 import { serviceService } from '../../services/serviceService';
 import { formatPrice } from '../../utils/format';
-import { Clock, ArrowRight, Sparkles, Filter } from 'lucide-react';
+import { Clock, ArrowRight, Sparkles } from 'lucide-react';
 
 export default function ServicesPage() {
   const [services, setServices] = useState<Service[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [loading, setLoading] = useState<boolean>(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchServices() {
@@ -22,6 +23,7 @@ export default function ServicesPage() {
         }
       } catch (err) {
         console.error('Failed to load services:', err);
+        setLoadError('We could not load the service menu. Please try again shortly.');
       } finally {
         setLoading(false);
       }
@@ -76,6 +78,10 @@ export default function ServicesPage() {
               <div className="w-8 h-8 border-2 border-champagne-300 border-t-zinc-900 rounded-full animate-spin mx-auto" />
               <p className="text-xs text-zinc-500">Loading service catalog...</p>
             </div>
+          ) : loadError ? (
+            <div className="text-center py-16 border rounded-xl border-dashed border-zinc-200">
+              <p className="text-sm font-semibold text-zinc-800">{loadError}</p>
+            </div>
           ) : filteredServices.length === 0 ? (
             <div className="text-center py-16 border rounded-xl border-dashed border-zinc-200">
               <Sparkles className="w-8 h-8 text-champagne-400 mx-auto mb-2" />
@@ -90,6 +96,9 @@ export default function ServicesPage() {
                   className="bg-white rounded-xl border border-zinc-200/80 p-6 flex flex-col justify-between hover:border-champagne-300 hover:shadow-lg transition-all"
                 >
                   <div className="space-y-4">
+                    {service.image && (
+                      <img src={service.image} alt={service.name} className="w-full h-48 rounded-lg object-cover" />
+                    )}
                     <div className="flex items-center justify-between">
                       <span className="text-[11px] uppercase tracking-wider font-semibold text-champagne-800 bg-champagne-50 px-2.5 py-0.5 rounded">
                         {service.category || 'General'}
@@ -112,7 +121,7 @@ export default function ServicesPage() {
                       href={`/book?service=${service._id}`}
                       className="inline-flex items-center gap-1.5 text-xs font-semibold px-4 py-2 rounded-md bg-champagne-100 text-champagne-900 hover:bg-champagne-200 border border-champagne-300 transition-colors"
                     >
-                      Book This <ArrowRight className="w-3.5 h-3.5" />
+                      Book Now <ArrowRight className="w-3.5 h-3.5" />
                     </Link>
                   </div>
                 </div>

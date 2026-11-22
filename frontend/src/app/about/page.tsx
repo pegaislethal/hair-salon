@@ -117,7 +117,7 @@ export default function AboutPage() {
         <div className="max-w-2xl mx-auto px-4 space-y-5">
           <h2 className="font-serif text-3xl font-bold text-zinc-900">Visit Iris Salon</h2>
           <p className="text-xs sm:text-sm text-zinc-600 leading-relaxed">
-            Conveniently located in Kathmandu with dedicated parking, relaxing music, and complimentary beverages.
+            Find Iris Hair Cut & Salon using the map below, or open directions in Google Maps.
           </p>
           <div className="pt-2">
             <Link
@@ -126,6 +126,36 @@ export default function AboutPage() {
             >
               Book an Appointment
             </Link>
+          </div>
+        </div>
+      </section>
+
+      <section className="bg-champagne-50/40 py-16 border-t border-zinc-100">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-8">
+            <span className="text-xs uppercase tracking-widest text-champagne-700 font-semibold">Our Location</span>
+            <h2 className="font-serif text-3xl font-bold text-zinc-900 mt-2">Find Us</h2>
+          </div>
+          <div className="rounded-xl overflow-hidden border border-zinc-200 shadow-sm bg-white">
+            <iframe
+              title="Iris Hair Cut and Salon location map"
+              src="https://www.google.com/maps?q=27.6625562,85.3408266&output=embed"
+              width="100%"
+              height="420"
+              loading="lazy"
+              referrerPolicy="no-referrer-when-downgrade"
+              className="border-0"
+            />
+          </div>
+          <div className="text-center mt-6">
+            <a
+              href="https://www.google.com/maps/dir/?api=1&destination=27.6625562%2C85.3408266"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-2 px-7 py-3 rounded-md bg-zinc-900 text-white hover:bg-zinc-800 text-xs font-semibold uppercase tracking-wider transition-colors"
+            >
+              Get Directions
+            </a>
           </div>
         </div>
       </section>

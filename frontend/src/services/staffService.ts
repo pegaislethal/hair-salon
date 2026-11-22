@@ -11,6 +11,14 @@ export const staffService = {
     const res = await api.get<{ success: boolean; data: Staff }>(`/staff/${id}`);
     return res.data;
   },
+  async getAvailableStaff(serviceId: string, date: string) {
+    const res = await api.get<{ success: boolean; data: string[] }>('/public/available-staff', { params: { serviceId, date } });
+    return res.data;
+  },
+  async getStaffManagement() {
+    const res = await api.get<{ success: boolean; data: Staff[] }>('/staff/management');
+    return res.data;
+  },
 
   async createStaff(data: {
     fullName: string;
@@ -18,8 +26,12 @@ export const staffService = {
     phone: string;
     password: string;
     bio?: string;
+    profileImage?: string;
+    specializations?: string[];
     services?: string[];
-    workingHours?: any;
+    workingHours?: Staff['workingHours'];
+    breaks?: Staff['breaks'];
+    daysOff?: string[];
   }) {
     const res = await api.post<{ success: boolean; data: any }>('/staff', data);
     return res.data;

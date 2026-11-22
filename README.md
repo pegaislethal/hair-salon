@@ -65,9 +65,9 @@ iris-hair-salon/
    ```bash
    cp .env.example .env
    ```
-4. Seed the database (Super Admin, Initial Services & Settings):
+4. Seed the database (Super Admin, salon services & settings; safe to rerun without duplicating services):
    ```bash
-   npx ts-node scripts/seed.ts
+   npm run seed
    ```
 5. Run development server:
    ```bash
@@ -101,6 +101,15 @@ iris-hair-salon/
    npm run dev
    ```
    *The frontend will be running at `http://localhost:3000`.*
+
+---
+
+## Scheduling & Recruitment Setup
+
+- Services and barber profiles are managed from the Super Admin dashboard. Configure each barber's assigned services, weekly hours, breaks, and days off before accepting online bookings.
+- Appointment availability is calculated from active services, salon/barber hours, holidays, breaks, and existing bookings. New requests remain pending until an administrator accepts them.
+- Public job applications accept PDF, DOC, or DOCX CVs. Set `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` in `backend/.env` to enable CV uploads; hiring and vacancy management remain available without applicant uploads configured.
+- The public careers page is `/join-us`; Super Admin manages hiring and applicant decisions from `/admin/recruitment`. Sub Admins have read-only recruitment and barber schedule views.
 
 ---
 

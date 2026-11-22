@@ -36,6 +36,7 @@ export interface Staff {
   _id: string;
   user: User | string;
   bio?: string;
+  specializations?: string[];
   profileImage?: string;
   services: (Service | string)[];
   workingHours: {

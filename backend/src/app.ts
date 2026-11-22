@@ -23,6 +23,7 @@ import notificationRoutes from './routes/notifications';
 import galleryRoutes from './routes/gallery';
 import reportRoutes from './routes/reports';
 import publicRoutes from './routes/public';
+import recruitmentRoutes from './routes/recruitment';
 
 // Connect database
 connectDB();
@@ -95,6 +96,7 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/gallery', galleryRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/public', publicRoutes);
+app.use('/api/recruitment', recruitmentRoutes);
 
 // Error handling
 app.use(notFound);

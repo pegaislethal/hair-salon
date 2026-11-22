@@ -3,15 +3,23 @@
 import React, { useEffect, useState } from 'react';
 import { ProtectedRoute } from '../../../components/ProtectedRoute';
 import { DashboardLayout } from '../../../layouts/DashboardLayout';
-import { Staff } from '../../../types';
+import { Service, Staff } from '../../../types';
 import { staffService } from '../../../services/staffService';
+import { serviceService } from '../../../services/serviceService';
 import { Input } from '../../../components/ui/Input';
 import { Button } from '../../../components/ui/Button';
 import { Modal } from '../../../components/ui/Modal';
-import { Users, Plus, Trash2, Mail, Phone, ShieldCheck } from 'lucide-react';
+import { Users, Plus, Trash2, Mail, Phone, ShieldCheck, Edit2 } from 'lucide-react';
+
+const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
+const defaultHours = (): Staff['workingHours'] => Object.fromEntries(days.map((day) => [
+  day,
+  { start: '09:00', end: '18:00', isWorking: day !== 'sunday' },
+])) as Staff['workingHours'];
 
 export default function AdminStaffPage() {
   const [staffList, setStaffList] = useState<Staff[]>([]);
+  const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Modal State
@@ -21,16 +29,28 @@ export default function AdminStaffPage() {
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [bio, setBio] = useState('');
+  const [profileImage, setProfileImage] = useState('');
+  const [specializations, setSpecializations] = useState('');
+  const [serviceIds, setServiceIds] = useState<string[]>([]);
+  const [workingHours, setWorkingHours] = useState<Staff['workingHours']>(defaultHours());
+  const [breaksText, setBreaksText] = useState('');
+  const [daysOffText, setDaysOffText] = useState('');
+  const [editingStaff, setEditingStaff] = useState<Staff | null>(null);
+  const [isActive, setIsActive] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const fetchStaff = async () => {
     setLoading(true);
     try {
-      const res = await staffService.getStaff();
+      const [res, servicesRes] = await Promise.all([
+        staffService.getStaffManagement(),
+        serviceService.getServices({ active: 'false' }),
+      ]);
       if (res.success && res.data) {
         setStaffList(res.data);
       }
+      if (servicesRes.success && servicesRes.data) setServices(servicesRes.data.filter((service) => service.isActive));
     } catch (err) {
       console.error('Failed to load staff:', err);
     } finally {
@@ -42,18 +62,69 @@ export default function AdminStaffPage() {
     fetchStaff();
   }, []);
 
-  const handleCreate = async (e: React.FormEvent) => {
+  const openCreateModal = () => {
+    setEditingStaff(null);
+    setFullName('');
+    setEmail('');
+    setPhone('');
+    setPassword('');
+    setBio('');
+    setProfileImage('');
+    setSpecializations('');
+    setServiceIds([]);
+    setWorkingHours(defaultHours());
+    setBreaksText('');
+    setDaysOffText('');
+    setErrorMsg(null);
+    setIsActive(true);
+    setIsModalOpen(true);
+  };
+
+  const openEditModal = (staff: Staff) => {
+    setEditingStaff(staff);
+    const account = typeof staff.user === 'object' ? staff.user : null;
+    setFullName(account?.fullName || '');
+    setEmail(account?.email || '');
+    setPhone(account?.phone || '');
+    setPassword('');
+    setIsActive(staff.isActive);
+    setBio(staff.bio || '');
+    setProfileImage(staff.profileImage || '');
+    setSpecializations((staff.specializations || []).join(', '));
+    setServiceIds(staff.services.map((service) => typeof service === 'string' ? service : service._id));
+    setWorkingHours(staff.workingHours || defaultHours());
+    setBreaksText((staff.breaks || []).map((item) => `${item.start}-${item.end}|${item.label || 'Break'}`).join('\n'));
+    setDaysOffText((staff.daysOff || []).map((date) => date.slice(0, 10)).join(', '));
+    setErrorMsg(null);
+    setIsModalOpen(true);
+  };
+
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
     setErrorMsg(null);
     try {
-      const res = await staffService.createStaff({
+      const breaks = breaksText.split('\n').map((line) => line.trim()).filter(Boolean).map((line) => {
+        const [hours, label] = line.split('|');
+        const [start, end] = hours.split('-');
+        return { start, end, label: label || 'Break' };
+      });
+      const profile = {
+        bio,
+        profileImage: profileImage || undefined,
+        specializations: specializations.split(',').map((item) => item.trim()).filter(Boolean),
+        services: serviceIds,
+        workingHours,
+        breaks,
+        daysOff: daysOffText.split(',').map((date) => date.trim()).filter(Boolean),
+        isActive,
         fullName,
         email,
         phone,
-        password,
-        bio,
-      });
+      };
+      const res = editingStaff
+        ? await staffService.updateStaff(editingStaff._id, profile)
+        : await staffService.createStaff({ ...profile, fullName, email, phone, password });
       if (res.success) {
         setIsModalOpen(false);
         fetchStaff();
@@ -79,11 +150,11 @@ export default function AdminStaffPage() {
     <ProtectedRoute allowedRoles={['super_admin']}>
       <DashboardLayout
         role="super_admin"
-        title="Staff & Stylist Management"
-        subtitle="Manage salon stylists, schedules, and active staff profiles"
+        title="Barber Management"
+        subtitle="Manage barber profiles, assigned services, working hours, breaks, and holidays"
         actions={
-          <Button onClick={() => setIsModalOpen(true)} className="gap-2 text-xs">
-            <Plus className="w-4 h-4" /> Add Stylist / Sub Admin
+          <Button onClick={openCreateModal} className="gap-2 text-xs">
+          <Plus className="w-4 h-4" /> Add Barber
           </Button>
         }
       >
@@ -164,12 +235,19 @@ export default function AdminStaffPage() {
                         </td>
                         <td className="px-6 py-4 text-right">
                           <button
+                            onClick={() => openEditModal(st)}
+                            className="p-1.5 rounded hover:bg-zinc-100 text-zinc-500 hover:text-zinc-900"
+                            title="Edit barber profile and schedule"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          {st.isActive && <button
                             onClick={() => handleDelete(st._id)}
                             className="p-1.5 rounded hover:bg-rose-50 text-zinc-400 hover:text-rose-600"
                             title="Deactivate staff"
                           >
                             <Trash2 className="w-4 h-4" />
-                          </button>
+                          </button>}
                         </td>
                       </tr>
                     );
@@ -184,45 +262,57 @@ export default function AdminStaffPage() {
         <Modal
           isOpen={isModalOpen}
           onClose={() => setIsModalOpen(false)}
-          title="Add Stylist / Sub Admin"
+          title={editingStaff ? 'Manage Barber & Schedule' : 'Add Barber'}
+          maxWidth="xl"
         >
-          <form onSubmit={handleCreate} className="space-y-4">
+          <form onSubmit={handleSave} className="space-y-4">
             {errorMsg && (
               <div className="p-3 bg-rose-50 border border-rose-200 text-xs text-rose-700 rounded">
                 {errorMsg}
               </div>
             )}
-            <Input
-              label="Full Name"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              placeholder="E.g. Elena Smith"
-              required
-            />
-            <Input
-              label="Email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="elena@irissalon.com"
-              required
-            />
-            <Input
-              label="Phone"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="+977-98..."
-              required
-            />
-            <Input
-              label="Initial Password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="At least 6 characters"
-              required
-              minLength={6}
-            />
+            <>
+              <Input label="Full Name" value={fullName} onChange={(e) => setFullName(e.target.value)} required />
+              <Input label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+              <Input label="Phone" value={phone} onChange={(e) => setPhone(e.target.value)} required />
+              {!editingStaff && <Input label="Initial Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={6} required />}
+            </>
+            {editingStaff && <label className="flex items-center gap-2 text-xs text-zinc-700"><input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} /> Barber is active and bookable</label>}
+            <Input label="Profile Image URL" type="url" value={profileImage} onChange={(e) => setProfileImage(e.target.value)} />
+            <Input label="Specializations (comma separated)" value={specializations} onChange={(e) => setSpecializations(e.target.value)} placeholder="Fades, coloring, styling" />
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wider text-zinc-700">Assigned Services</p>
+              <div className="grid grid-cols-2 gap-2 max-h-36 overflow-y-auto">
+                {services.map((service) => (
+                  <label key={service._id} className="flex items-center gap-2 text-xs text-zinc-600">
+                    <input type="checkbox" checked={serviceIds.includes(service._id)} onChange={(e) => setServiceIds((current) => e.target.checked ? [...current, service._id] : current.filter((id) => id !== service._id))} />
+                    {service.name}
+                  </label>
+                ))}
+              </div>
+              <p className="text-[11px] text-zinc-400">Leave all unchecked to allow every active service.</p>
+            </div>
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wider text-zinc-700">Weekly Working Hours</p>
+              {days.map((day) => (
+                <div key={day} className="grid grid-cols-[1fr_auto_1fr_1fr] items-center gap-2 text-xs">
+                  <span className="capitalize">{day}</span>
+                  <input aria-label={`${day} working`} type="checkbox" checked={workingHours[day]?.isWorking || false} onChange={(e) => setWorkingHours((current) => ({ ...current, [day]: { ...current[day], isWorking: e.target.checked } }))} />
+                  <input aria-label={`${day} start`} type="time" value={workingHours[day]?.start || '09:00'} onChange={(e) => setWorkingHours((current) => ({ ...current, [day]: { ...current[day], start: e.target.value } }))} className="border rounded px-2 py-1" disabled={!workingHours[day]?.isWorking} />
+                  <input aria-label={`${day} end`} type="time" value={workingHours[day]?.end || '18:00'} onChange={(e) => setWorkingHours((current) => ({ ...current, [day]: { ...current[day], end: e.target.value } }))} className="border rounded px-2 py-1" disabled={!workingHours[day]?.isWorking} />
+                </div>
+              ))}
+            </div>
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold uppercase tracking-wider text-zinc-700">Breaks (one per line: 12:00-13:00|Lunch)</label>
+                <textarea rows={3} value={breaksText} onChange={(e) => setBreaksText(e.target.value)} className="w-full border rounded-md p-2 text-xs" placeholder="12:00-13:00|Lunch" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-semibold uppercase tracking-wider text-zinc-700">Holidays (YYYY-MM-DD, comma separated)</label>
+                <textarea rows={3} value={daysOffText} onChange={(e) => setDaysOffText(e.target.value)} className="w-full border rounded-md p-2 text-xs" />
+              </div>
+            </div>
             <div className="space-y-1.5">
               <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-700">
                 Stylist Bio
@@ -240,7 +330,7 @@ export default function AdminStaffPage() {
                 Cancel
               </Button>
               <Button size="sm" type="submit" isLoading={submitting}>
-                Create Stylist
+                {editingStaff ? 'Save Barber' : 'Create Barber'}
               </Button>
             </div>
           </form>

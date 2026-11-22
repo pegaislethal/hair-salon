@@ -8,14 +8,16 @@ import { authenticate, isAdminOrSubAdmin } from '../middleware/auth';
 import { AuthRequest } from '../types';
 import { generateBookingReference } from '../utils/generateToken';
 import { sendEmail } from '../config/email';
+import { randomUUID } from 'crypto';
+import { dateBounds, getAvailableStaffForSlot, releaseSlot, reserveSlot, timeToMinutes } from '../utils/availability';
 
 const router = Router();
 
 // @route   POST /api/appointments — Customer books an appointment
 router.post('/', authenticate, [
-  body('serviceId').notEmpty().withMessage('Service ID is required'),
-  body('appointmentDate').isISO8601().withMessage('Valid date is required'),
-  body('startTime').matches(/^\d{2}:\d{2}$/).withMessage('Start time must be HH:MM'),
+  body('serviceId').isMongoId().withMessage('Valid service ID is required'),
+  body('appointmentDate').matches(/^\d{4}-\d{2}-\d{2}$/).withMessage('Date must use YYYY-MM-DD format'),
+  body('startTime').matches(/^([01]\d|2[0-3]):[0-5]\d$/).withMessage('Start time must be HH:MM'),
   body('staffId').optional().isMongoId(),
   body('customerNotes').optional().isLength({ max: 500 }),
 ], async (req: AuthRequest, res: Response): Promise<void> => {
@@ -25,24 +27,53 @@ router.post('/', authenticate, [
     const { serviceId, appointmentDate, startTime, staffId, customerNotes } = req.body;
     const service = await Service.findById(serviceId);
     if (!service || !service.isActive) { res.status(404).json({ success: false, message: 'Service not found.' }); return; }
-    // Calculate end time
-    const [h, m] = startTime.split(':').map(Number);
-    const totalMins = h * 60 + m + service.duration;
+    const { start } = dateBounds(appointmentDate);
+    if (!Number.isFinite(start.getTime()) || timeToMinutes(startTime) >= 1440) {
+      res.status(400).json({ success: false, message: 'Invalid appointment date or time.' }); return;
+    }
+    const availableStaff = await getAvailableStaffForSlot(service, appointmentDate, startTime, staffId);
+    if (!availableStaff.length) {
+      res.status(409).json({ success: false, message: 'That time is no longer available. Please choose another slot.' }); return;
+    }
+    const reservationId = randomUUID();
+    let staffUserId: import('mongoose').Types.ObjectId | undefined;
+    for (const candidate of availableStaff) {
+      const candidateUserId = candidate.user as unknown as import('mongoose').Types.ObjectId;
+      try {
+        await reserveSlot(candidateUserId, start, startTime, service.duration + (service.bufferDuration || 0), reservationId);
+        staffUserId = candidateUserId;
+        break;
+      } catch (error) {
+        await releaseSlot(reservationId);
+        if ((error as { code?: number }).code !== 11000) throw error;
+      }
+    }
+    if (!staffUserId) {
+      res.status(409).json({ success: false, message: 'That time was just booked. Please choose another slot.' }); return;
+    }
+    const totalMins = timeToMinutes(startTime) + service.duration;
     const endTime = `${String(Math.floor(totalMins / 60)).padStart(2, '0')}:${String(totalMins % 60).padStart(2, '0')}`;
     const bookingReference = generateBookingReference();
-    const appointment = await Appointment.create({
-      bookingReference,
-      customer: req.user!.id,
-      service: serviceId,
-      staff: staffId || undefined,
-      appointmentDate: new Date(appointmentDate),
-      startTime,
-      endTime,
-      duration: service.duration,
-      priceSnapshot: service.price,
-      customerNotes,
-      status: 'pending',
-    });
+    let appointment;
+    try {
+      appointment = await Appointment.create({
+        bookingReference,
+        customer: req.user!.id,
+        service: serviceId,
+        staff: staffUserId,
+        appointmentDate: start,
+        startTime,
+        endTime,
+        duration: service.duration,
+        priceSnapshot: service.price,
+        reservationId,
+        customerNotes,
+        status: 'pending',
+      });
+    } catch (error) {
+      await releaseSlot(reservationId);
+      throw error;
+    }
     // Notify customer
     await Notification.create({ recipient: req.user!.id, type: 'booking_created', title: 'Booking Request Sent', message: `Your appointment (${bookingReference}) is pending confirmation.`, appointment: appointment._id });
     // Notify admins
@@ -120,6 +151,7 @@ router.patch('/:id/reject', authenticate, isAdminOrSubAdmin, [body('reason').opt
     appointment.rejectionReason = req.body.reason || 'No reason provided.';
     appointment.notifications.rejectionSent = true;
     await appointment.save();
+    if (appointment.reservationId) await releaseSlot(appointment.reservationId);
     const customer = appointment.customer as any;
     await Notification.create({ recipient: customer._id, type: 'booking_rejected', title: 'Appointment Not Available', message: `Your appointment ${appointment.bookingReference} was not accepted. Reason: ${appointment.rejectionReason}`, appointment: appointment._id });
     await sendEmail({ to: customer.email, subject: `Appointment Update — ${appointment.bookingReference}`, html: `<p>Hi ${customer.fullName},</p><p>Unfortunately your appointment was not available. Reason: ${appointment.rejectionReason}</p>` });
@@ -142,6 +174,7 @@ router.patch('/:id/cancel', authenticate, [body('reason').optional().isString()]
     appointment.cancelledBy = req.user!.id as any;
     appointment.notifications.cancellationSent = true;
     await appointment.save();
+    if (appointment.reservationId) await releaseSlot(appointment.reservationId);
     await Notification.create({ recipient: customer._id, type: 'booking_cancelled', title: 'Appointment Cancelled', message: `Your appointment ${appointment.bookingReference} has been cancelled.`, appointment: appointment._id });
     res.json({ success: true, message: 'Appointment cancelled.', data: appointment });
   } catch (error) {
@@ -159,6 +192,7 @@ router.patch('/:id/complete', authenticate, isAdminOrSubAdmin, async (req: AuthR
     appointment.completedBy = req.user!.id as any;
     appointment.completedAt = new Date();
     await appointment.save();
+    if (appointment.reservationId) await releaseSlot(appointment.reservationId);
     res.json({ success: true, message: 'Appointment marked as completed.', data: appointment });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Server error.' });
@@ -167,8 +201,8 @@ router.patch('/:id/complete', authenticate, isAdminOrSubAdmin, async (req: AuthR
 
 // @route   PATCH /api/appointments/:id/reschedule — Customer or Admin
 router.patch('/:id/reschedule', authenticate, [
-  body('appointmentDate').isISO8601().withMessage('Valid date is required'),
-  body('startTime').matches(/^\d{2}:\d{2}$/).withMessage('Start time must be HH:MM'),
+  body('appointmentDate').matches(/^\d{4}-\d{2}-\d{2}$/).withMessage('Date must use YYYY-MM-DD format'),
+  body('startTime').matches(/^([01]\d|2[0-3]):[0-5]\d$/).withMessage('Start time must be HH:MM'),
 ], async (req: AuthRequest, res: Response): Promise<void> => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) { res.status(400).json({ success: false, errors: errors.array() }); return; }
@@ -183,21 +217,60 @@ router.patch('/:id/reschedule', authenticate, [
     }
     const { appointmentDate, startTime, staffId } = req.body;
     const duration = appointment.duration;
-    const [h, m] = startTime.split(':').map(Number);
-    const totalMins = h * 60 + m + duration;
+    const service = appointment.service as unknown as import('../models/Service').IService;
+    const availableStaff = await getAvailableStaffForSlot(service, appointmentDate, startTime, staffId, appointment._id.toString(), appointment.reservationId);
+    if (!availableStaff.length) { res.status(409).json({ success: false, message: 'That time is not available for the selected barber.' }); return; }
+    const { start } = dateBounds(appointmentDate);
+    const totalMins = timeToMinutes(startTime) + duration;
     const endTime = `${String(Math.floor(totalMins / 60)).padStart(2, '0')}:${String(totalMins % 60).padStart(2, '0')}`;
+    const staffUserId = availableStaff[0].user as unknown as import('mongoose').Types.ObjectId;
+    const previousReservationId = appointment.reservationId;
+    const previousStaffId = appointment.staff as import('mongoose').Types.ObjectId;
+    const previousDate = appointment.appointmentDate;
+    const previousStartTime = appointment.startTime;
+    const sameReservation = previousReservationId
+      && previousStaffId?.toString() === staffUserId.toString()
+      && previousDate.toISOString().slice(0, 10) === start.toISOString().slice(0, 10)
+      && previousStartTime === startTime;
+    const reservationId = sameReservation ? previousReservationId : randomUUID();
+    if (!sameReservation) {
+      if (previousReservationId) await releaseSlot(previousReservationId);
+      try {
+        await reserveSlot(staffUserId, start, startTime, duration + (service.bufferDuration || 0), reservationId);
+      } catch (error) {
+        await releaseSlot(reservationId);
+        if (previousReservationId && previousStaffId) {
+          await reserveSlot(previousStaffId, previousDate, previousStartTime, duration + (service.bufferDuration || 0), previousReservationId);
+        }
+        if ((error as { code?: number }).code === 11000) {
+          res.status(409).json({ success: false, message: 'That time was just booked. Please choose another slot.' }); return;
+        }
+        throw error;
+      }
+    }
 
     appointment.rescheduledFrom = {
       date: appointment.appointmentDate,
       startTime: appointment.startTime,
       endTime: appointment.endTime,
     };
-    appointment.appointmentDate = new Date(appointmentDate);
+    appointment.appointmentDate = start;
     appointment.startTime = startTime;
     appointment.endTime = endTime;
-    if (staffId !== undefined) appointment.staff = staffId || undefined;
+    appointment.staff = staffUserId;
+    appointment.reservationId = reservationId;
     appointment.status = 'pending';
-    await appointment.save();
+    try {
+      await appointment.save();
+    } catch (error) {
+      if (!sameReservation) {
+        await releaseSlot(reservationId);
+        if (previousReservationId && previousStaffId) {
+          await reserveSlot(previousStaffId, previousDate, previousStartTime, duration + (service.bufferDuration || 0), previousReservationId);
+        }
+      }
+      throw error;
+    }
 
     res.json({ success: true, message: 'Appointment rescheduled successfully.', data: appointment });
   } catch (error) {

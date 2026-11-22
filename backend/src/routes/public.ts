@@ -3,7 +3,9 @@ import Service from '../models/Service';
 import Staff from '../models/Staff';
 import Gallery from '../models/Gallery';
 import SalonSettings from '../models/SalonSettings';
-import Appointment from '../models/Appointment';
+import { getAvailableSlots } from '../utils/availability';
+import { IService } from '../models/Service';
+import mongoose from 'mongoose';
 
 const router = Router();
 
@@ -30,10 +32,35 @@ router.get('/services', async (req: Request, res: Response): Promise<void> => {
 // @route   GET /api/public/staff
 router.get('/staff', async (req: Request, res: Response): Promise<void> => {
   try {
-    const staff = await Staff.find({ isActive: true }).populate('user', 'fullName profileImage').populate('services', 'name');
-    res.json({ success: true, data: staff });
+    const staff = await Staff.find({ isActive: true }).populate('user', 'fullName profileImage isActive').populate('services', 'name');
+    res.json({ success: true, data: staff.filter((member) => (member.user as unknown as { isActive?: boolean })?.isActive) });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Server error.' });
+  }
+});
+
+router.get('/available-staff', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { serviceId, date } = req.query;
+    if (typeof serviceId !== 'string' || !mongoose.isValidObjectId(serviceId) || typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      res.status(400).json({ success: false, message: 'A valid serviceId and YYYY-MM-DD date are required.' }); return;
+    }
+    const service = await Service.findById(serviceId) as unknown as import('../models/Service').IService | null;
+    if (!service?.isActive) { res.status(404).json({ success: false, message: 'Service not found.' }); return; }
+    if (!Number.isFinite(new Date(`${date}T00:00:00.000Z`).getTime()) || new Date(`${date}T00:00:00.000Z`).toISOString().slice(0, 10) !== date) {
+      res.status(400).json({ success: false, message: 'Invalid calendar date.' }); return;
+    }
+    const staff = await Staff.find({ isActive: true })
+      .populate('user', 'fullName profileImage isActive')
+      .populate('services', 'name');
+    const availableStaff = await Promise.all(staff.map(async (barber) => {
+      const user = barber.user as unknown as { isActive?: boolean };
+      if (!user?.isActive) return null;
+      return (await getAvailableSlots(service, date, barber._id.toString())).length ? barber._id.toString() : null;
+    }));
+    res.json({ success: true, data: availableStaff.filter((id): id is string => Boolean(id)) });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Unable to load barber availability.' });
   }
 });
 
@@ -51,34 +78,19 @@ router.get('/gallery', async (req: Request, res: Response): Promise<void> => {
 router.get('/available-slots', async (req: Request, res: Response): Promise<void> => {
   try {
     const { serviceId, date, staffId } = req.query;
-    if (!serviceId || !date) { res.status(400).json({ success: false, message: 'serviceId and date are required.' }); return; }
-    const service = await Service.findById(serviceId);
-    if (!service) { res.status(404).json({ success: false, message: 'Service not found.' }); return; }
-    const settings = await SalonSettings.findOne();
-    const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-    const targetDate = new Date(date as string);
-    const dayName = days[targetDate.getDay()] as keyof typeof settings.businessHours;
-    const hours = settings?.businessHours?.[dayName];
-    if (!hours || (hours as any).isClosed) { res.json({ success: true, data: [], message: 'Salon is closed on this day.' }); return; }
-    const { open, close } = hours as any;
-    const slotInterval = settings?.bookingSettings?.appointmentSlotInterval || 30;
-    // Generate slots
-    const slots: string[] = [];
-    let [sh, sm] = open.split(':').map(Number);
-    const [eh, em] = close.split(':').map(Number);
-    while (sh * 60 + sm + service.duration <= eh * 60 + em) {
-      slots.push(`${String(sh).padStart(2, '0')}:${String(sm).padStart(2, '0')}`);
-      sm += slotInterval;
-      if (sm >= 60) { sh += Math.floor(sm / 60); sm = sm % 60; }
+    if (typeof serviceId !== 'string' || !mongoose.isValidObjectId(serviceId) || typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      res.status(400).json({ success: false, message: 'A valid serviceId and YYYY-MM-DD date are required.' }); return;
     }
-    // Filter booked slots
-    const start = new Date(targetDate); start.setHours(0, 0, 0, 0);
-    const end = new Date(targetDate); end.setHours(23, 59, 59, 999);
-    const filter: any = { appointmentDate: { $gte: start, $lte: end }, status: { $in: ['pending', 'accepted'] } };
-    if (staffId) filter.staff = staffId;
-    const bookedAppointments = await Appointment.find(filter);
-    const bookedTimes = new Set(bookedAppointments.map(a => a.startTime));
-    const availableSlots = slots.filter(s => !bookedTimes.has(s));
+    const service = await Service.findById(String(serviceId)) as unknown as IService | null;
+    if (!service) { res.status(404).json({ success: false, message: 'Service not found.' }); return; }
+    if (!service.isActive) { res.status(404).json({ success: false, message: 'Service not found.' }); return; }
+    if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      res.status(400).json({ success: false, message: 'date must use YYYY-MM-DD format.' }); return;
+    }
+    if (!Number.isFinite(new Date(`${date}T00:00:00.000Z`).getTime()) || new Date(`${date}T00:00:00.000Z`).toISOString().slice(0, 10) !== date) {
+      res.status(400).json({ success: false, message: 'Invalid calendar date.' }); return;
+    }
+    const availableSlots = await getAvailableSlots(service, date, typeof staffId === 'string' ? staffId : undefined);
     res.json({ success: true, data: availableSlots });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Server error.' });

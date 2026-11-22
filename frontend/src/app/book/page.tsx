@@ -32,6 +32,7 @@ function BookingWizard() {
   const [step, setStep] = useState<number>(1);
   const [services, setServices] = useState<Service[]>([]);
   const [staffList, setStaffList] = useState<Staff[]>([]);
+  const [availableStaffIds, setAvailableStaffIds] = useState<string[]>([]);
   const [selectedService, setSelectedService] = useState<Service | null>(null);
   const [selectedStaff, setSelectedStaff] = useState<Staff | null>(null);
   const [selectedDate, setSelectedDate] = useState<string>('');
@@ -39,6 +40,7 @@ function BookingWizard() {
   const [selectedSlot, setSelectedSlot] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
   const [loadingServices, setLoadingServices] = useState<boolean>(true);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
   const [loadingSlots, setLoadingSlots] = useState<boolean>(false);
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -74,6 +76,7 @@ function BookingWizard() {
         }
       } catch (err) {
         console.error('Failed to load booking catalog:', err);
+        setCatalogError('Unable to load services and barbers. Please refresh and try again.');
       } finally {
         setLoadingServices(false);
       }
@@ -89,30 +92,24 @@ function BookingWizard() {
       setLoadingSlots(true);
       setError(null);
       try {
-        const staffUserId = typeof selectedStaff?.user === 'object' ? (selectedStaff.user as any)?._id : selectedStaff?.user;
-        const res = await appointmentService.getAvailableSlots(
-          selectedService!._id,
-          selectedDate,
-          staffUserId
-        );
+        const [res, barberAvailability] = await Promise.all([
+          appointmentService.getAvailableSlots(selectedService!._id, selectedDate, selectedStaff?._id),
+          staffService.getAvailableStaff(selectedService!._id, selectedDate),
+        ]);
+        setAvailableStaffIds(barberAvailability.data);
+        if (selectedStaff && !barberAvailability.data.includes(selectedStaff._id)) setSelectedStaff(null);
         if (res.success && res.data) {
           setAvailableSlots(res.data);
-          if (res.data.length > 0) {
-            setSelectedSlot(res.data[0]);
-          } else {
-            setSelectedSlot('');
-          }
+          setSelectedSlot((current) => res.data.includes(current) ? current : (res.data[0] || ''));
         } else {
-          // Fallback business slots if backend calculation returns empty
-          const fallback = ['10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00'];
-          setAvailableSlots(fallback);
-          setSelectedSlot('10:00');
+          setAvailableSlots([]);
+          setSelectedSlot('');
+          setError(res.message || 'Unable to check barber availability.');
         }
       } catch (err) {
-        // Fallback default slots
-        const fallback = ['10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00'];
-        setAvailableSlots(fallback);
-        setSelectedSlot('10:00');
+        setAvailableSlots([]);
+        setSelectedSlot('');
+        setError('Unable to check live availability. Please try again.');
       } finally {
         setLoadingSlots(false);
       }
@@ -136,12 +133,11 @@ function BookingWizard() {
     setError(null);
 
     try {
-      const staffUserId = typeof selectedStaff?.user === 'object' ? (selectedStaff.user as any)?._id : selectedStaff?.user;
       const res = await appointmentService.createAppointment({
         serviceId: selectedService._id,
         appointmentDate: selectedDate,
         startTime: selectedSlot,
-        staffId: staffUserId,
+        staffId: selectedStaff?._id,
         customerNotes: notes,
       });
 
@@ -179,12 +175,12 @@ function BookingWizard() {
             <CheckCircle2 className="w-10 h-10" />
           </div>
           <div>
-            <span className="text-xs uppercase tracking-widest text-zinc-400 font-semibold">Booking Confirmed</span>
+            <span className="text-xs uppercase tracking-widest text-zinc-400 font-semibold">Booking Request Received</span>
             <h2 className="font-serif text-3xl font-bold text-zinc-900 mt-1">
               Your Appointment Request is Submitted!
             </h2>
             <p className="text-sm text-zinc-600 mt-2 max-w-md mx-auto leading-relaxed">
-              We have received your booking and notified our team. You can view its real-time status in your client portal.
+              Your request is pending until our team accepts it. You can view its status in your client portal.
             </p>
           </div>
 
@@ -274,6 +270,10 @@ function BookingWizard() {
 
                 {loadingServices ? (
                   <div className="py-12 text-center text-xs text-zinc-500">Loading services...</div>
+                ) : catalogError ? (
+                  <div className="py-12 text-center text-xs text-rose-600">{catalogError}</div>
+                ) : services.length === 0 ? (
+                  <div className="py-12 text-center text-xs text-zinc-500">No services are available to book right now.</div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {services.map((s) => {
@@ -352,26 +352,47 @@ function BookingWizard() {
                     />
                   </div>
 
-                  {/* Stylist Selector */}
-                  <div className="space-y-2">
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-700">
-                      Preferred Stylist (Optional)
-                    </label>
-                    <select
-                      value={selectedStaff?._id || ''}
-                      onChange={(e) => {
-                        const st = staffList.find((s) => s._id === e.target.value);
-                        setSelectedStaff(st || null);
-                      }}
-                      className="w-full px-3.5 py-2.5 text-sm bg-white border border-zinc-200 rounded-md text-zinc-900 focus:outline-none focus:ring-1 focus:ring-zinc-900"
+                </div>
+
+                <div className="space-y-3">
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-700">
+                    Choose a Barber
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedStaff(null)}
+                      className={`p-4 rounded-lg border text-left text-sm transition-colors ${!selectedStaff ? 'border-zinc-900 bg-champagne-50' : 'border-zinc-200 hover:border-champagne-400'}`}
                     >
-                      <option value="">Any Available Senior Stylist</option>
-                      {staffList.map((st) => (
-                        <option key={st._id} value={st._id}>
-                          {typeof st.user === 'object' ? (st.user as any)?.fullName : 'Stylist'}
-                        </option>
-                      ))}
-                    </select>
+                      <span className="font-semibold text-zinc-900">Any Available Barber</span>
+                      <span className="block text-xs text-zinc-500 mt-1">We&apos;ll match you with an available barber.</span>
+                    </button>
+                    {staffList.filter((staff) => staff.isActive && availableStaffIds.includes(staff._id)).map((staff) => {
+                      const barberUser = typeof staff.user === 'object' ? staff.user : null;
+                      const name = barberUser?.fullName || 'Barber';
+                      const image = staff.profileImage || barberUser?.profileImage;
+                      const specializations = staff.specializations?.length ? staff.specializations : staff.bio ? [staff.bio] : [];
+                      return (
+                        <button
+                          key={staff._id}
+                          type="button"
+                          onClick={() => setSelectedStaff(staff)}
+                          className={`p-4 rounded-lg border text-left transition-colors ${selectedStaff?._id === staff._id ? 'border-zinc-900 bg-champagne-50' : 'border-zinc-200 hover:border-champagne-400'}`}
+                        >
+                          <span className="flex items-center gap-3">
+                            {image ? (
+                              <img src={image} alt="" className="w-12 h-12 rounded-full object-cover" />
+                            ) : (
+                              <span className="w-12 h-12 rounded-full bg-champagne-100 flex items-center justify-center font-semibold text-champagne-900">{name[0]}</span>
+                            )}
+                            <span>
+                              <span className="block font-semibold text-zinc-900">{name}</span>
+                              <span className="block text-xs text-zinc-500 mt-1">{specializations.join(', ') || 'Haircut & styling'}</span>
+                            </span>
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -455,9 +476,9 @@ function BookingWizard() {
                       <span className="font-semibold text-zinc-900">
                         {selectedStaff
                           ? typeof selectedStaff.user === 'object'
-                            ? (selectedStaff.user as any)?.fullName
-                            : 'Assigned Stylist'
-                          : 'Any Senior Stylist'}
+                            ? selectedStaff.user.fullName
+                            : 'Assigned Barber'
+                          : 'Any Available Barber'}
                       </span>
                     </div>
                   </div>

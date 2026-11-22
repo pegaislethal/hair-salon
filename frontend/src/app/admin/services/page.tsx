@@ -23,6 +23,8 @@ export default function AdminServicesPage() {
   const [price, setPrice] = useState<number | string>('');
   const [duration, setDuration] = useState<number | string>('');
   const [category, setCategory] = useState('Hair');
+  const [image, setImage] = useState('');
+  const [isActive, setIsActive] = useState(true);
   const [saving, setSaving] = useState(false);
 
   const fetchServices = async () => {
@@ -50,6 +52,8 @@ export default function AdminServicesPage() {
     setPrice('');
     setDuration('');
     setCategory('Hair');
+    setImage('');
+    setIsActive(true);
     setIsModalOpen(true);
   };
 
@@ -60,6 +64,8 @@ export default function AdminServicesPage() {
     setPrice(s.price);
     setDuration(s.duration);
     setCategory(s.category || 'Hair');
+    setImage(s.image || '');
+    setIsActive(s.isActive);
     setIsModalOpen(true);
   };
 
@@ -73,6 +79,8 @@ export default function AdminServicesPage() {
         price: Number(price),
         duration: Number(duration),
         category,
+        image: image || undefined,
+        isActive,
       };
 
       if (editingService) {
@@ -213,6 +221,21 @@ export default function AdminServicesPage() {
               />
             </div>
 
+            <Input
+              label="Service Image URL"
+              type="url"
+              value={image}
+              onChange={(e) => setImage(e.target.value)}
+              placeholder="https://..."
+            />
+
+            {editingService && (
+              <label className="flex items-center gap-2 text-xs text-zinc-700">
+                <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
+                Available for customer bookings
+              </label>
+            )}
+
             <div className="grid grid-cols-2 gap-4">
               <Input
                 label="Price (NPR)"
@@ -250,6 +273,7 @@ export default function AdminServicesPage() {
                 <option value="Nails">Nails</option>
                 <option value="Beauty">Beauty</option>
                 <option value="Bridal">Bridal</option>
+                <option value="Grooming">Grooming</option>
               </select>
             </div>
 

@@ -10,6 +10,7 @@ export interface IAppointment extends Document {
   endTime: string;
   duration: number;
   priceSnapshot: number;
+  reservationId?: string;
   customerNotes?: string;
   status: 'pending' | 'accepted' | 'rejected' | 'cancelled' | 'completed' | 'no_show';
   rejectionReason?: string;
@@ -46,6 +47,7 @@ const appointmentSchema = new Schema<IAppointment>({
   endTime: { type: String, required: true },
   duration: { type: Number, required: true },
   priceSnapshot: { type: Number, required: true },
+  reservationId: { type: String },
   customerNotes: { type: String, maxlength: 500 },
   status: { type: String, enum: ['pending', 'accepted', 'rejected', 'cancelled', 'completed', 'no_show'], default: 'pending' },
   rejectionReason: { type: String },

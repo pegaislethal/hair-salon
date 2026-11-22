@@ -9,6 +9,7 @@ interface WorkingHours {
 export interface IStaff extends Document {
   user: mongoose.Types.ObjectId;
   bio: string;
+  specializations: string[];
   profileImage?: string;
   services: mongoose.Types.ObjectId[];
   workingHours: {
@@ -36,6 +37,7 @@ const workingHoursSchema = new Schema({
 const staffSchema = new Schema<IStaff>({
   user: { type: Schema.Types.ObjectId, ref: 'User', required: true, unique: true },
   bio: { type: String, maxlength: 500 },
+  specializations: { type: [{ type: String, trim: true }], default: [] },
   profileImage: { type: String },
   services: [{ type: Schema.Types.ObjectId, ref: 'Service' }],
   workingHours: {

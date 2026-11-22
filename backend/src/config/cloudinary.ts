@@ -45,6 +45,22 @@ export const uploadToCloudinary = async (
   });
 };
 
+export const uploadDocumentToCloudinary = async (
+  fileBuffer: Buffer,
+  filename: string
+): Promise<{ url: string; publicId: string }> => {
+  return new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(
+      { folder: 'iris-salon/cvs', resource_type: 'raw', use_filename: true, unique_filename: true, filename_override: filename },
+      (error, result) => {
+        if (error || !result) return reject(error || new Error('Document upload failed.'));
+        resolve({ url: result.secure_url, publicId: result.public_id });
+      }
+    );
+    uploadStream.end(fileBuffer);
+  });
+};
+
 export const deleteFromCloudinary = async (publicId: string): Promise<void> => {
   await cloudinary.uploader.destroy(publicId);
 };
