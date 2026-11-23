@@ -6,6 +6,7 @@ import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 import path from 'path';
+import mongoose from 'mongoose';
 
 dotenv.config();
 
@@ -82,7 +83,13 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Health check
 app.get('/api/health', (req, res) => {
-  res.json({ success: true, message: 'Iris Salon API is running', timestamp: new Date() });
+  const databaseConnected = mongoose.connection.readyState === 1;
+  res.status(databaseConnected ? 200 : 503).json({
+    success: databaseConnected,
+    message: databaseConnected ? 'Iris Salon API and database are ready.' : 'Iris Salon API is running; database is unavailable.',
+    database: databaseConnected ? 'connected' : 'disconnected',
+    timestamp: new Date(),
+  });
 });
 
 // Routes
@@ -102,10 +109,10 @@ app.use('/api/recruitment', recruitmentRoutes);
 app.use(notFound);
 app.use(errorHandler);
 
-const PORT = process.env.PORT || 5000;
+const PORT = Number(process.env.PORT) || 5000;
 if (process.env.NODE_ENV !== 'test' && !process.env.VERCEL) {
   app.listen(PORT, () => {
-    console.log(`🌸 Iris Salon API running on port ${PORT} in ${process.env.NODE_ENV} mode`);
+    console.log(`🌸 Iris Salon API listening at http://localhost:${PORT} (${process.env.NODE_ENV || 'development'} mode)`);
   });
 }
 
