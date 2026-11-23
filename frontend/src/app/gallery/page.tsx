@@ -4,11 +4,10 @@ import React, { useEffect, useState } from 'react';
 import { PublicLayout } from '../../layouts/PublicLayout';
 import { GalleryItem } from '../../types';
 import { galleryService } from '../../services/galleryService';
-import { Sparkles } from 'lucide-react';
 
 export default function GalleryPage() {
   const [items, setItems] = useState<GalleryItem[]>([]);
-  const [selectedCat, setSelectedCat] = useState<string>('all');
+  const [selectedCat, setSelectedCat] = useState<'Men' | 'Women'>('Men');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -27,22 +26,10 @@ export default function GalleryPage() {
     loadGallery();
   }, []);
 
-  const defaultShowcase = [
-    { title: 'Honey Balayage Waves', cat: 'Color', image: 'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=800&q=80' },
-    { title: 'Architectural Bob Cut', cat: 'Cuts', image: 'https://images.unsplash.com/photo-1595476108010-b4d1f102b1b1?auto=format&fit=crop&w=800&q=80' },
-    { title: 'Bridal Floral Updo', cat: 'Bridal', image: 'https://images.unsplash.com/photo-1562322140-8baeececf3df?auto=format&fit=crop&w=800&q=80' },
-    { title: 'Executive Textured Crop', cat: 'Men', image: 'https://images.unsplash.com/photo-1503951914875-452162b0f3f1?auto=format&fit=crop&w=800&q=80' },
-    { title: 'Silky Keratin Treatment', cat: 'Treatment', image: 'https://images.unsplash.com/photo-1519699047748-de8e457a634e?auto=format&fit=crop&w=800&q=80' },
-    { title: 'Platinum Ash Blonde', cat: 'Color', image: 'https://images.unsplash.com/photo-1580618672591-eb180b1a973f?auto=format&fit=crop&w=800&q=80' },
-  ];
-
-  const galleryList = items.length > 0 ? items : defaultShowcase;
-  const categories = ['all', ...Array.from(new Set(galleryList.map((g: any) => g.category || g.cat || 'Style')))];
-
-  const filtered =
-    selectedCat === 'all'
-      ? galleryList
-      : galleryList.filter((g: any) => (g.category || g.cat || 'Style') === selectedCat);
+  const categories: Array<'Men' | 'Women'> = ['Men', 'Women'];
+  const filtered = items.filter((item) =>
+    String(item.category || '').trim().toLowerCase() === selectedCat.toLowerCase()
+  );
 
   return (
     <PublicLayout>
@@ -78,29 +65,37 @@ export default function GalleryPage() {
             ))}
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filtered.map((item: any, idx: number) => (
-              <div
-                key={idx}
-                className="group relative rounded-xl overflow-hidden shadow-sm border border-zinc-200/80 bg-zinc-100 aspect-[4/5]"
-              >
-                <img
-                  src={item.image}
-                  alt={item.title || 'Salon style'}
-                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity p-6 flex flex-col justify-end">
-                  <span className="text-[10px] uppercase tracking-widest text-champagne-300 font-semibold mb-1">
-                    {item.category || item.cat || 'Style'}
-                  </span>
-                  <h3 className="font-serif text-lg font-bold text-white">{item.title}</h3>
-                  {item.description && (
-                    <p className="text-xs text-zinc-300 mt-1 line-clamp-2">{item.description}</p>
-                  )}
+          {loading ? (
+            <div className="py-16 text-center text-sm text-zinc-500">Loading gallery...</div>
+          ) : filtered.length === 0 ? (
+            <div className="rounded-xl border border-zinc-200 bg-zinc-50 py-16 text-center text-sm text-zinc-500">
+              No {selectedCat.toLowerCase()} gallery photos are available yet.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filtered.map((item) => (
+                <div
+                  key={item._id}
+                  className="group relative rounded-xl overflow-hidden shadow-sm border border-zinc-200/80 bg-zinc-100 aspect-[4/5]"
+                >
+                  <img
+                    src={item.image}
+                    alt={item.title || 'Salon style'}
+                    className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity p-6 flex flex-col justify-end">
+                    <span className="text-[10px] uppercase tracking-widest text-champagne-300 font-semibold mb-1">
+                      {item.category || 'Style'}
+                    </span>
+                    <h3 className="font-serif text-lg font-bold text-white">{item.title}</h3>
+                    {item.description && (
+                      <p className="text-xs text-zinc-300 mt-1 line-clamp-2">{item.description}</p>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       </section>
     </PublicLayout>

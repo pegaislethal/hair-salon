@@ -102,7 +102,7 @@ export default function AdminRecruitmentPage() {
     }
   };
 
-  const decide = async (applicationId: string, status: 'accepted' | 'rejected') => {
+  const decide = async (applicationId: string, status: 'shortlisted' | 'accepted' | 'rejected') => {
     try {
       await recruitmentService.decide(applicationId, status);
       await load();
@@ -176,7 +176,7 @@ export default function AdminRecruitmentPage() {
                       <td className="max-w-xs p-4"><p>{application.experience}</p><p className="mt-1 text-zinc-500">{application.skills.join(', ')}</p></td>
                       <td className="p-4"><a href={application.cvUrl} target="_blank" rel="noreferrer" className="font-semibold underline">View CV</a></td>
                       <td className="p-4 capitalize">{application.status}</td>
-                      <td className="p-4">{application.status === 'pending' ? <div className="flex gap-2"><Button size="sm" onClick={() => decide(application._id, 'accepted')}>Accept</Button><Button size="sm" variant="outline" onClick={() => decide(application._id, 'rejected')}>Reject</Button></div> : '—'}</td>
+                      <td className="p-4">{application.status === 'pending' || application.status === 'shortlisted' ? <div className="flex flex-wrap gap-2">{application.status === 'pending' && <Button size="sm" variant="outline" onClick={() => decide(application._id, 'shortlisted')}>Shortlist</Button>}<Button size="sm" onClick={() => decide(application._id, 'accepted')}>Accept</Button><Button size="sm" variant="outline" onClick={() => decide(application._id, 'rejected')}>Reject</Button></div> : '—'}</td>
                     </tr>)}
                   </tbody>
                 </table>

@@ -3,6 +3,7 @@ import Appointment from '../models/Appointment';
 import Notification from '../models/Notification';
 import { sendEmail } from '../config/email';
 import { sendSMS } from '../config/sms';
+import { appointmentReminderTemplate } from '../utils/emailTemplates';
 
 // Core reminder check function (can be invoked by cron or serverless endpoint)
 export const runReminderCheck = async (): Promise<{ success: boolean; sent24h: number; sent2h: number; noShows: number }> => {
@@ -37,7 +38,9 @@ export const runReminderCheck = async (): Promise<{ success: boolean; sent24h: n
           await sendEmail({
             to: customer.email,
             subject: 'Appointment Reminder — Iris Salon',
-            html: `<p>Hi ${customer.fullName},</p><p>Reminder: Your <b>${service?.name}</b> appointment is tomorrow at <b>${apt.startTime}</b>. Ref: ${apt.bookingReference}</p>`,
+            html: appointmentReminderTemplate({ customerName: customer.fullName, bookingRef: apt.bookingReference, serviceName: service?.name || 'Salon service', date: apt.appointmentDate.toISOString().slice(0, 10), time: apt.startTime, reminderLabel: 'Appointment reminder — tomorrow' }),
+            deduplicationKey: `appointment:${apt.bookingReference}:reminder_24h`,
+            type: 'appointment_reminder_24h',
           });
         }
         if (customer.phone) {
@@ -71,7 +74,9 @@ export const runReminderCheck = async (): Promise<{ success: boolean; sent24h: n
           await sendEmail({
             to: customer.email,
             subject: 'Appointment in 2 Hours — Iris Salon',
-            html: `<p>Hi ${customer.fullName},</p><p>Your <b>${service?.name}</b> appointment is in <b>2 hours</b> at ${apt.startTime}. Ref: ${apt.bookingReference}</p>`,
+            html: appointmentReminderTemplate({ customerName: customer.fullName, bookingRef: apt.bookingReference, serviceName: service?.name || 'Salon service', date: apt.appointmentDate.toISOString().slice(0, 10), time: apt.startTime, reminderLabel: 'Appointment in 2 hours' }),
+            deduplicationKey: `appointment:${apt.bookingReference}:reminder_2h`,
+            type: 'appointment_reminder_2h',
           });
         }
         if (customer.phone) {

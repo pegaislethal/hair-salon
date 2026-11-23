@@ -19,7 +19,7 @@ export interface JobApplication {
   experience: string;
   skills: string[];
   cvUrl: string;
-  status: 'pending' | 'accepted' | 'rejected';
+  status: 'pending' | 'shortlisted' | 'accepted' | 'rejected';
   createdAt: string;
 }
 
@@ -60,7 +60,7 @@ export const recruitmentService = {
     const response = await api.get<{ success: boolean; data: JobApplication[] }>('/recruitment/admin/applications');
     return response.data;
   },
-  async decide(applicationId: string, status: 'accepted' | 'rejected') {
+  async decide(applicationId: string, status: 'shortlisted' | 'accepted' | 'rejected') {
     const response = await api.patch(`/recruitment/admin/applications/${applicationId}/decision`, { status });
     return response.data;
   },

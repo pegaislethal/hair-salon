@@ -30,6 +30,7 @@ export interface IAppointment extends Document {
     confirmationSent: boolean;
     rejectionSent: boolean;
     cancellationSent: boolean;
+    rescheduledSent: boolean;
     reminder24hSent: boolean;
     reminder2hSent: boolean;
   };
@@ -67,6 +68,7 @@ const appointmentSchema = new Schema<IAppointment>({
     confirmationSent: { type: Boolean, default: false },
     rejectionSent: { type: Boolean, default: false },
     cancellationSent: { type: Boolean, default: false },
+    rescheduledSent: { type: Boolean, default: false },
     reminder24hSent: { type: Boolean, default: false },
     reminder2hSent: { type: Boolean, default: false },
   },

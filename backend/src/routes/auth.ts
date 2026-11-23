@@ -1,11 +1,12 @@
 import { Router, Request, Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import User from '../models/User';
-import { generateAccessToken, generateRefreshToken, generateSecureToken } from '../utils/generateToken';
+import { generateAccessToken, generateRefreshToken, generateSecureToken, generateOTP } from '../utils/generateToken';
 import { authenticate } from '../middleware/auth';
 import { AuthRequest } from '../types';
 import { sendEmail } from '../config/email';
 import jwt from 'jsonwebtoken';
+import { verificationTemplate, passwordResetTemplate } from '../utils/emailTemplates';
 
 const router = Router();
 
@@ -29,17 +30,22 @@ router.post('/register', [
       return;
     }
     const verificationToken = generateSecureToken();
+    const verificationOTP = generateOTP();
     const user = await User.create({
       fullName, email, phone, password,
       emailVerificationToken: verificationToken,
       emailVerificationExpiry: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      emailVerificationOTP: verificationOTP,
+      emailVerificationOTPExpiry: new Date(Date.now() + 24 * 60 * 60 * 1000),
     });
     const frontendBase = (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
     const verifyUrl = `${frontendBase}/verify-email?token=${verificationToken}`;
     await sendEmail({
       to: user.email,
       subject: 'Verify Your Email — Iris Salon',
-      html: `<p>Hi ${user.fullName},</p><p>Please verify your email: <a href="${verifyUrl}">${verifyUrl}</a></p>`,
+      html: verificationTemplate(user.fullName, verifyUrl, verificationOTP),
+      deduplicationKey: `auth:${user._id.toString()}:email_verification`,
+      type: 'email_verification',
     });
     res.status(201).json({ success: true, message: 'Registration successful. Please verify your email.' });
   } catch (error) {
@@ -150,8 +156,17 @@ router.put('/change-password', authenticate, [
 // @route   POST /api/auth/verify-email
 router.post('/verify-email', async (req: Request, res: Response): Promise<void> => {
   try {
-    const { token } = req.body;
-    const user = await User.findOne({ emailVerificationToken: token, emailVerificationExpiry: { $gt: new Date() } });
+    const { token, otp, email } = req.body;
+    let user;
+    if (token) {
+      user = await User.findOne({ emailVerificationToken: token, emailVerificationExpiry: { $gt: new Date() } });
+    } else if (email && otp) {
+      user = await User.findOne({
+        email: email.toLowerCase(),
+        emailVerificationOTP: otp,
+        emailVerificationOTPExpiry: { $gt: new Date() },
+      });
+    }
     if (!user) {
       res.status(400).json({ success: false, message: 'Invalid or expired verification token.' });
       return;
@@ -159,6 +174,8 @@ router.post('/verify-email', async (req: Request, res: Response): Promise<void> 
     user.isEmailVerified = true;
     user.emailVerificationToken = undefined;
     user.emailVerificationExpiry = undefined;
+    user.emailVerificationOTP = undefined;
+    user.emailVerificationOTPExpiry = undefined;
     await user.save({ validateBeforeSave: false });
     res.json({ success: true, message: 'Email verified successfully.' });
   } catch (error) {
@@ -175,12 +192,21 @@ router.post('/forgot-password', [body('email').isEmail()], async (req: Request, 
       return;
     }
     const resetToken = generateSecureToken();
+    const resetOTP = generateOTP();
     user.passwordResetToken = resetToken;
     user.passwordResetExpiry = new Date(Date.now() + 60 * 60 * 1000);
+    user.passwordResetOTP = resetOTP;
+    user.passwordResetOTPExpiry = new Date(Date.now() + 60 * 60 * 1000);
     await user.save({ validateBeforeSave: false });
     const frontendBase = (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
     const resetUrl = `${frontendBase}/reset-password?token=${resetToken}`;
-    await sendEmail({ to: user.email, subject: 'Password Reset — Iris Salon', html: `<p>Reset your password: <a href="${resetUrl}">${resetUrl}</a></p><p>Expires in 1 hour.</p>` });
+    await sendEmail({
+      to: user.email,
+      subject: 'Password Reset — Iris Salon',
+      html: passwordResetTemplate(resetUrl, user.fullName, resetOTP),
+      deduplicationKey: `auth:${user._id.toString()}:password_reset:${resetToken}`,
+      type: 'password_reset',
+    });
     res.json({ success: true, message: 'If that email exists, a reset link has been sent.' });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Server error.' });
@@ -189,12 +215,23 @@ router.post('/forgot-password', [body('email').isEmail()], async (req: Request, 
 
 // @route   POST /api/auth/reset-password
 router.post('/reset-password', [
-  body('token').notEmpty(),
+  body('token').optional(),
+  body('otp').optional(),
+  body('email').optional().isEmail(),
   body('password').isLength({ min: 6 }),
 ], async (req: Request, res: Response): Promise<void> => {
   try {
-    const { token, password } = req.body;
-    const user = await User.findOne({ passwordResetToken: token, passwordResetExpiry: { $gt: new Date() } });
+    const { token, otp, email, password } = req.body;
+    let user;
+    if (token) {
+      user = await User.findOne({ passwordResetToken: token, passwordResetExpiry: { $gt: new Date() } });
+    } else if (email && otp) {
+      user = await User.findOne({
+        email: email.toLowerCase(),
+        passwordResetOTP: otp,
+        passwordResetOTPExpiry: { $gt: new Date() },
+      });
+    }
     if (!user) {
       res.status(400).json({ success: false, message: 'Invalid or expired reset token.' });
       return;
@@ -202,6 +239,8 @@ router.post('/reset-password', [
     user.password = password;
     user.passwordResetToken = undefined;
     user.passwordResetExpiry = undefined;
+    user.passwordResetOTP = undefined;
+    user.passwordResetOTPExpiry = undefined;
     await user.save();
     res.json({ success: true, message: 'Password reset successful.' });
   } catch (error) {

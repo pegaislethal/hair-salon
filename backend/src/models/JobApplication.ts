@@ -8,7 +8,7 @@ export interface IJobApplication extends Document {
   experience: string;
   skills: string[];
   cvUrl: string;
-  status: 'pending' | 'accepted' | 'rejected';
+  status: 'pending' | 'shortlisted' | 'accepted' | 'rejected';
   reviewedBy?: mongoose.Types.ObjectId;
   reviewedAt?: Date;
 }
@@ -21,7 +21,7 @@ const jobApplicationSchema = new Schema<IJobApplication>({
   experience: { type: String, required: true, maxlength: 2000 },
   skills: [{ type: String, trim: true }],
   cvUrl: { type: String, required: true },
-  status: { type: String, enum: ['pending', 'accepted', 'rejected'], default: 'pending' },
+  status: { type: String, enum: ['pending', 'shortlisted', 'accepted', 'rejected'], default: 'pending' },
   reviewedBy: { type: Schema.Types.ObjectId, ref: 'User' },
   reviewedAt: Date,
 }, { timestamps: true });

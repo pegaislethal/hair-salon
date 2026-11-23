@@ -85,6 +85,7 @@ export interface Appointment {
     confirmationSent: boolean;
     rejectionSent: boolean;
     cancellationSent: boolean;
+    rescheduledSent: boolean;
     reminder24hSent: boolean;
     reminder2hSent: boolean;
   };

@@ -1,7 +1,9 @@
 import { Router, Response } from 'express';
 import Notification from '../models/Notification';
-import { authenticate } from '../middleware/auth';
+import { authenticate, isSuperAdmin } from '../middleware/auth';
 import { AuthRequest } from '../types';
+import EmailDelivery from '../models/EmailDelivery';
+import { retryEmailDelivery } from '../config/email';
 
 const router = Router();
 
@@ -46,6 +48,21 @@ router.patch('/read-all', authenticate, async (req: AuthRequest, res: Response):
   } catch (error) {
     res.status(500).json({ success: false, message: 'Server error.' });
   }
+});
+
+router.get('/email-deliveries', authenticate, isSuperAdmin, async (_req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const deliveries = await EmailDelivery.find().sort({ createdAt: -1 }).limit(100);
+    res.json({ success: true, data: deliveries });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Unable to load email deliveries.' });
+  }
+});
+
+router.post('/email-deliveries/:id/retry', authenticate, isSuperAdmin, async (req: AuthRequest, res: Response): Promise<void> => {
+  const deliveryId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const result = await retryEmailDelivery(deliveryId);
+  res.json({ success: result.success, data: { id: deliveryId, providerMessageId: result.providerMessageId }, message: result.success ? 'Email retry accepted.' : 'Email retry failed.', error: result.success ? undefined : result.error });
 });
 
 export default router;

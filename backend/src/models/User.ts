@@ -11,8 +11,12 @@ export interface IUser extends Document {
   isEmailVerified: boolean;
   emailVerificationToken?: string;
   emailVerificationExpiry?: Date;
+  emailVerificationOTP?: string;
+  emailVerificationOTPExpiry?: Date;
   passwordResetToken?: string;
   passwordResetExpiry?: Date;
+  passwordResetOTP?: string;
+  passwordResetOTPExpiry?: Date;
   isActive: boolean;
   lastLogin?: Date;
   createdAt: Date;
@@ -30,8 +34,12 @@ const userSchema = new Schema<IUser>({
   isEmailVerified: { type: Boolean, default: false },
   emailVerificationToken: { type: String },
   emailVerificationExpiry: { type: Date },
+  emailVerificationOTP: { type: String },
+  emailVerificationOTPExpiry: { type: Date },
   passwordResetToken: { type: String },
   passwordResetExpiry: { type: Date },
+  passwordResetOTP: { type: String },
+  passwordResetOTPExpiry: { type: Date },
   isActive: { type: Boolean, default: true },
   lastLogin: { type: Date },
 }, { timestamps: true });
@@ -54,7 +62,11 @@ userSchema.set('toJSON', {
   transform: (doc, ret) => {
     delete ret.password;
     delete ret.emailVerificationToken;
+    delete ret.emailVerificationOTP;
+    delete ret.emailVerificationOTPExpiry;
     delete ret.passwordResetToken;
+    delete ret.passwordResetOTP;
+    delete ret.passwordResetOTPExpiry;
     return ret;
   },
 });

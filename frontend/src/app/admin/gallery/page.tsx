@@ -18,7 +18,7 @@ export default function AdminGalleryPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [title, setTitle] = useState('');
   const [image, setImage] = useState('');
-  const [category, setCategory] = useState('Hair');
+  const [category, setCategory] = useState<'Men' | 'Women'>('Men');
   const [description, setDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -156,15 +156,11 @@ export default function AdminGalleryPage() {
               </label>
               <select
                 value={category}
-                onChange={(e) => setCategory(e.target.value)}
+                onChange={(e) => setCategory(e.target.value as 'Men' | 'Women')}
                 className="w-full px-3 py-2 text-xs border border-zinc-200 rounded-md focus:outline-none focus:ring-1 focus:ring-zinc-900"
               >
-                <option value="Hair">Hair</option>
-                <option value="Color">Color</option>
-                <option value="Bridal">Bridal</option>
                 <option value="Men">Men</option>
-                <option value="Skin">Skin</option>
-                <option value="Spa">Spa</option>
+                <option value="Women">Women</option>
               </select>
             </div>
             <div className="space-y-1.5">
