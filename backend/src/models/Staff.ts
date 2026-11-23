@@ -54,7 +54,6 @@ const staffSchema = new Schema<IStaff>({
   isActive: { type: Boolean, default: true },
 }, { timestamps: true });
 
-staffSchema.index({ user: 1 });
 staffSchema.index({ services: 1 });
 
 export default mongoose.model<IStaff>('Staff', staffSchema);

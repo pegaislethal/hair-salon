@@ -77,7 +77,6 @@ const appointmentSchema = new Schema<IAppointment>({
 appointmentSchema.index({ customer: 1, appointmentDate: -1 });
 appointmentSchema.index({ status: 1 });
 appointmentSchema.index({ appointmentDate: 1, startTime: 1 });
-appointmentSchema.index({ bookingReference: 1 });
 appointmentSchema.index({ staff: 1, appointmentDate: 1 });
 
 export default mongoose.model<IAppointment>('Appointment', appointmentSchema);
