@@ -2,11 +2,11 @@
 
 import React, { useEffect, useState } from 'react';
 import { PublicLayout } from '../../layouts/PublicLayout';
-import { GalleryItem } from '../../types';
+import { GalleryDisplayItem, mergeGalleryItems, localGalleryItems } from '../../data/gallery';
 import { galleryService } from '../../services/galleryService';
 
 export default function GalleryPage() {
-  const [items, setItems] = useState<GalleryItem[]>([]);
+  const [items, setItems] = useState<GalleryDisplayItem[]>(localGalleryItems);
   const [selectedCat, setSelectedCat] = useState<'Men' | 'Women'>('Men');
   const [loading, setLoading] = useState(true);
 
@@ -15,7 +15,7 @@ export default function GalleryPage() {
       try {
         const res = await galleryService.getGallery();
         if (res.success && res.data) {
-          setItems(res.data);
+          setItems(mergeGalleryItems(res.data));
         }
       } catch (err) {
         console.error('Failed to load gallery:', err);

@@ -1,6 +1,7 @@
 import React from 'react';
 import Link from 'next/link';
-import { Sparkles, MapPin, Phone, Mail, Clock, Instagram, Facebook } from 'lucide-react';
+import Image from 'next/image';
+import { MapPin, Phone, Mail, Clock, Instagram, Facebook } from 'lucide-react';
 
 export const Footer: React.FC = () => {
   return (
@@ -10,17 +11,13 @@ export const Footer: React.FC = () => {
           {/* Brand Info */}
           <div className="space-y-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-champagne-500/20 border border-champagne-500/40 flex items-center justify-center text-champagne-300">
-                <Sparkles className="w-5 h-5 text-champagne-300" />
-              </div>
-              <div>
-                <span className="block font-serif text-2xl font-bold tracking-tight text-white">
-                  IRIS
-                </span>
-                <span className="block text-[10px] uppercase tracking-widest text-champagne-300 font-medium">
-                  Hair Cut & Salon
-                </span>
-              </div>
+              <Image
+                src="/iris-logo.png"
+                alt="Iris Salon of Hair & Beauty Academy"
+                width={468}
+                height={368}
+                className="h-16 w-20 rounded-md object-contain"
+              />
             </div>
             <p className="text-sm text-zinc-400 leading-relaxed">
               Experience the pinnacle of luxury hair styling, beauty therapies, and personalized salon care in a sanctuary designed for your comfort and timeless elegance.

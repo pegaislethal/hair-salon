@@ -5,6 +5,11 @@ import { Providers } from './providers';
 export const metadata: Metadata = {
   title: 'Iris Hair Cut and Salon | Luxury Hair & Beauty Care',
   description: 'Premier hair salon offering precision haircuts, styling, coloring, facials, and luxury spa treatments.',
+  icons: {
+    icon: '/favicon.png',
+    shortcut: '/favicon.png',
+    apple: '/favicon.png',
+  },
 };
 
 export default function RootLayout({

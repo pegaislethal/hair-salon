@@ -2,9 +2,10 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '../context/AuthContext';
-import { Menu, X, Calendar, User as UserIcon, LogOut, ChevronDown, Sparkles } from 'lucide-react';
+import { Menu, X, Calendar, User as UserIcon, LogOut, ChevronDown } from 'lucide-react';
 
 export const Navbar: React.FC = () => {
   const pathname = usePathname();
@@ -31,19 +32,15 @@ export const Navbar: React.FC = () => {
     <header className="sticky top-0 z-40 w-full bg-white/95 backdrop-blur-md border-b border-zinc-100 shadow-sm transition-all">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-20">
-          {/* Brand Logo */}
-          <Link href="/" className="flex items-center gap-3 group">
-            <div className="w-10 h-10 rounded-full bg-champagne-100 border border-champagne-300 flex items-center justify-center text-champagne-800 transition-transform group-hover:scale-105">
-              <Sparkles className="w-5 h-5 text-champagne-700" />
-            </div>
-            <div>
-              <span className="block font-serif text-xl sm:text-2xl font-bold tracking-tight text-zinc-900 group-hover:text-champagne-700 transition-colors">
-                IRIS
-              </span>
-              <span className="block text-[10px] uppercase tracking-widest text-zinc-500 font-medium">
-                Hair Cut & Salon
-              </span>
-            </div>
+          <Link href="/" aria-label="Iris Salon home" className="flex items-center shrink-0 group">
+            <Image
+              src="/iris-logo.png"
+              alt="Iris Salon of Hair & Beauty Academy"
+              width={468}
+              height={368}
+              priority
+              className="h-16 w-20 sm:w-[90px] object-contain transition-transform group-hover:scale-[1.03]"
+            />
           </Link>
 
           {/* Desktop Nav Links */}

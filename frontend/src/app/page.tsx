@@ -3,7 +3,8 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { PublicLayout } from '../layouts/PublicLayout';
-import { Service, GalleryItem } from '../types';
+import { Service } from '../types';
+import { GalleryDisplayItem, mergeGalleryItems, localGalleryItems } from '../data/gallery';
 import { serviceService } from '../services/serviceService';
 import { galleryService } from '../services/galleryService';
 import { formatPrice } from '../utils/format';
@@ -21,7 +22,7 @@ import {
 
 export default function HomePage() {
   const [featuredServices, setFeaturedServices] = useState<Service[]>([]);
-  const [gallery, setGallery] = useState<GalleryItem[]>([]);
+  const [gallery, setGallery] = useState<GalleryDisplayItem[]>(localGalleryItems);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -35,7 +36,7 @@ export default function HomePage() {
           setFeaturedServices(servicesRes.value.data.slice(0, 6));
         }
         if (galleryRes.status === 'fulfilled' && galleryRes.value.success) {
-          setGallery(galleryRes.value.data.slice(0, 4));
+          setGallery(mergeGalleryItems(galleryRes.value.data).slice(0, 4));
         }
       } catch (err) {
         console.error('Error fetching home data:', err);

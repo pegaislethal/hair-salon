@@ -2,6 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -17,7 +18,6 @@ import {
   Bell,
   ShieldCheck,
   LogOut,
-  Sparkles,
 } from 'lucide-react';
 
 export const Sidebar: React.FC = () => {
@@ -56,11 +56,14 @@ export const Sidebar: React.FC = () => {
       <div>
         {/* Logo / Header */}
         <div className="p-6 border-b border-zinc-100 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-full bg-champagne-100 border border-champagne-300 flex items-center justify-center text-champagne-800">
-            <Sparkles className="w-4 h-4 text-champagne-700" />
-          </div>
+          <Image
+            src="/iris-logo.png"
+            alt="Iris Salon"
+            width={468}
+            height={368}
+            className="w-[72px] h-14 object-contain shrink-0"
+          />
           <div>
-            <h1 className="font-serif font-bold text-lg text-zinc-900 tracking-tight">IRIS SALON</h1>
             <p className="text-[10px] uppercase tracking-widest text-zinc-400 font-semibold">
               {isSuperAdmin ? 'Super Admin Portal' : 'Sub Admin Portal'}
             </p>
