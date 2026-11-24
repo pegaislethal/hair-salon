@@ -1,6 +1,16 @@
 import dotenv from 'dotenv';
+import dns from 'node:dns';
 import path from 'path';
 dotenv.config({ path: path.join(__dirname, '../.env') });
+
+const configuredDnsServers = process.env.MONGODB_DNS_SERVERS
+  ?.split(',')
+  .map((server) => server.trim())
+  .filter(Boolean);
+
+if (configuredDnsServers?.length) {
+  dns.setServers(configuredDnsServers);
+}
 
 import mongoose from 'mongoose';
 import User from '../src/models/User';
@@ -85,7 +95,6 @@ const seed = async () => {
 
     console.log('\n🌸 Seed completed successfully!');
     console.log(`   Admin email: ${process.env.SUPER_ADMIN_EMAIL}`);
-    console.log(`   Admin password: ${process.env.SUPER_ADMIN_PASSWORD}`);
     process.exit(0);
   } catch (error) {
     console.error('Seed error:', error);
