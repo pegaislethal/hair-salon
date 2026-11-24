@@ -61,7 +61,9 @@ export const Sidebar: React.FC = () => {
             alt="Iris Salon"
             width={468}
             height={368}
-            className="w-[72px] h-14 object-contain shrink-0"
+            sizes="72px"
+            quality={100}
+            className="w-[72px] h-14 rounded-full border border-champagne-300 object-cover shrink-0"
           />
           <div>
             <p className="text-[10px] uppercase tracking-widest text-zinc-400 font-semibold">

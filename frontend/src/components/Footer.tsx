@@ -16,7 +16,9 @@ export const Footer: React.FC = () => {
                 alt="Iris Salon of Hair & Beauty Academy"
                 width={468}
                 height={368}
-                className="h-16 w-20 rounded-md object-contain"
+                sizes="72px"
+                quality={100}
+                className="h-14 w-[72px] rounded-full border border-champagne-300 object-cover"
               />
             </div>
             <p className="text-sm text-zinc-400 leading-relaxed">

@@ -38,8 +38,10 @@ export const Navbar: React.FC = () => {
               alt="Iris Salon of Hair & Beauty Academy"
               width={468}
               height={368}
+              sizes="72px"
+              quality={100}
               priority
-              className="h-16 w-20 sm:w-[90px] object-contain transition-transform group-hover:scale-[1.03]"
+              className="h-14 w-[72px] rounded-full border border-champagne-300 object-cover transition-transform group-hover:scale-[1.03]"
             />
           </Link>
 
