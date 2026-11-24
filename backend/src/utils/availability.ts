@@ -7,7 +7,7 @@ import BookingLock from '../models/BookingLock';
 import { IAppointment } from '../models/Appointment';
 
 const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'] as const;
-const activeStatuses = ['accepted', 'confirmed'];
+const activeStatuses = ['accepted', 'confirmed'] as const;
 // Barber schedules use Nepal local time, while appointment dates are stored as UTC calendar days.
 const salonUtcOffsetMinutes = 345;
 const isValidTime = (time: string): boolean => /^([01]\d|2[0-3]):[0-5]\d$/.test(time || '');
@@ -93,7 +93,7 @@ export const getAvailableStaffForSlot = async (
       appointmentDate: { $gte: start, $lt: end },
       status: { $in: activeStatuses },
       ...(excludeAppointmentId ? { _id: { $ne: excludeAppointmentId } } : {}),
-    } as any).populate('service', 'bufferDuration'),
+    }).populate('service', 'bufferDuration'),
     BookingLock.find({
       staff: { $in: staffUserIds },
       appointmentDate: start,
@@ -157,7 +157,7 @@ export const isVirtualBarberAvailableForSlot = async (
       appointmentDate: { $gte: start, $lt: end },
       status: { $in: activeStatuses },
       ...(excludeAppointmentId ? { _id: { $ne: excludeAppointmentId } } : {}),
-    } as any).populate('service', 'bufferDuration'),
+    }).populate('service', 'bufferDuration'),
     BookingLock.find({
       appointmentDate: start,
       ...(excludeReservationId ? { reservationId: { $ne: excludeReservationId } } : {}),
