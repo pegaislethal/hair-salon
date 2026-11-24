@@ -2,7 +2,6 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { PublicLayout } from '../../layouts/PublicLayout';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
@@ -10,7 +9,6 @@ import { authService } from '../../services/authService';
 import { Sparkles, AlertCircle, CheckCircle2 } from 'lucide-react';
 
 export default function RegisterPage() {
-  const router = useRouter();
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -53,13 +51,11 @@ export default function RegisterPage() {
           {success ? (
             <div className="p-6 rounded-xl bg-champagne-50 border border-champagne-300 text-center space-y-3">
               <CheckCircle2 className="w-10 h-10 text-emerald-600 mx-auto" />
-              <h3 className="font-serif text-lg font-bold text-zinc-900">Registration Complete</h3>
+              <h3 className="font-serif text-lg font-bold text-zinc-900">Verify Your Email</h3>
               <p className="text-xs text-zinc-600 leading-relaxed">
-                Your account has been created successfully. You can now log in to reserve appointments.
+                We sent a verification link to <span className="font-semibold">{email}</span>. Open it to verify your account and sign in automatically.
+                If you started a booking, you will return to it after verification.
               </p>
-              <Button onClick={() => router.push('/login')} className="w-full mt-2">
-                Proceed to Sign In
-              </Button>
             </div>
           ) : (
             <>

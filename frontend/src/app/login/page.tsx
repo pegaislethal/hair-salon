@@ -8,6 +8,7 @@ import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import { authService } from '../../services/authService';
 import { useAuth } from '../../context/AuthContext';
+import { readBookingDraft } from '../../utils/bookingDraft';
 import { Sparkles, AlertCircle, ArrowRight } from 'lucide-react';
 
 export default function LoginPage() {
@@ -28,11 +29,11 @@ export default function LoginPage() {
       if (res.success && res.data) {
         login(res.data.accessToken, res.data.refreshToken, res.data.user);
         if (res.data.user.role === 'super_admin') {
-          router.push('/admin/dashboard');
+          router.replace('/admin/dashboard');
         } else if (res.data.user.role === 'sub_admin') {
-          router.push('/sub-admin/dashboard');
+          router.replace('/sub-admin/dashboard');
         } else {
-          router.push('/customer/dashboard');
+          router.replace(readBookingDraft() ? '/book' : '/customer/dashboard');
         }
       } else {
         setError('Login failed. Please verify your credentials.');

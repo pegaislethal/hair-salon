@@ -21,6 +21,10 @@ export const authenticate = async (req: AuthRequest, res: Response, next: NextFu
       res.status(401).json({ success: false, message: 'Invalid token or account deactivated.' });
       return;
     }
+    if (user.role === 'customer' && !user.isEmailVerified) {
+      res.status(403).json({ success: false, message: 'Please verify your email before accessing your account.' });
+      return;
+    }
     req.user = { id: user._id.toString(), role: user.role, email: user.email };
     next();
   } catch (error) {

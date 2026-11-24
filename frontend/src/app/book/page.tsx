@@ -8,6 +8,13 @@ import { Appointment, Service } from '../../types';
 import { serviceService } from '../../services/serviceService';
 import { appointmentService } from '../../services/appointmentService';
 import { useAuth } from '../../context/AuthContext';
+import {
+  BookingDraft,
+  BookingStep,
+  clearBookingDraft,
+  readBookingDraft,
+  saveBookingDraft,
+} from '../../utils/bookingDraft';
 import { Button } from '../../components/ui/Button';
 import { formatPrice, formatTime12 } from '../../utils/format';
 import {
@@ -17,6 +24,13 @@ import {
   AlertCircle,
   ArrowRight,
   ChevronLeft,
+  Scissors,
+  Droplets,
+  Palette,
+  UserRound,
+  Package,
+  Layers,
+  Check,
 } from 'lucide-react';
 
 const getErrorMessage = (error: unknown, fallback: string): string => {
@@ -27,60 +41,205 @@ const getErrorMessage = (error: unknown, fallback: string): string => {
   return fallback;
 };
 
+const toDateInputValue = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const getTodayDate = (): string => toDateInputValue(new Date());
+
+const getTomorrowDate = (): string => {
+  const date = new Date();
+  date.setDate(date.getDate() + 1);
+  return toDateInputValue(date);
+};
+
+const getServiceCategory = (service: Service): string => {
+  const name = service.name.toLowerCase();
+  const category = (service.category || '').trim();
+  const normalizedCategory = category.toLowerCase();
+  const searchable = `${name} ${normalizedCategory}`;
+
+  if (/\b(package|combo)\b/.test(searchable)) return 'Packages and Combos';
+  if (/\bbeard\b/.test(name) || /beard|groom/.test(normalizedCategory)) return 'Beard Services';
+  if (/color|colour|highlight|balayage/.test(searchable)) return 'Hair Coloring';
+  if (/treatment|spa|wash|straighten|keratin/.test(searchable)) return 'Hair Treatments';
+  if (/styling|blow.?dry/.test(searchable)) return 'Hair Styling';
+  if (/hair.?cut|fade|\bcut\b/.test(name) || normalizedCategory === 'hair') return 'Haircuts';
+  return category || 'Other Services';
+};
+
+const getCategoryIcon = (category: string) => {
+  if (category === 'Haircuts') return Scissors;
+  if (category === 'Hair Styling') return Sparkles;
+  if (category === 'Hair Treatments') return Droplets;
+  if (category === 'Hair Coloring') return Palette;
+  if (category === 'Beard Services') return UserRound;
+  if (category === 'Packages and Combos') return Layers;
+  return Package;
+};
+
+const getServiceImage = (service: Service, category: string): string | undefined => {
+  if (service.image) return service.image;
+
+  const name = service.name.toLowerCase();
+  if (category === 'Beard Services') return '/services/Gemini_Generated_Image_pl23jwpl23jwpl23.jpg';
+  if (category === 'Haircuts' || category === 'Packages and Combos') {
+    return /women|bridal/.test(name)
+      ? '/services/Gemini_Generated_Image_pl23jwpl23jwpl23 (2).jpg'
+      : '/services/Gemini_Generated_Image_pl23jwpl23jwpl23.jpg';
+  }
+  if (category === 'Hair Styling') return '/services/Gemini_Generated_Image_pl23jwpl23jwpl23 (1).jpg';
+  if (category === 'Hair Coloring' || category === 'Hair Treatments') {
+    return '/services/Gemini_Generated_Image_pl23jwpl23jwpl23 (3).jpg';
+  }
+  return undefined;
+};
+
 function BookingWizard() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const preselectedService = searchParams.get('service');
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, loading: authLoading } = useAuth();
 
-  const [step, setStep] = useState<number>(1);
+  const [step, setStep] = useState<BookingStep>(1);
   const [services, setServices] = useState<Service[]>([]);
   const [selectedService, setSelectedService] = useState<Service | null>(null);
-  const [selectedBarber, setSelectedBarber] = useState('Lycan');
+  const [selectedBarber, setSelectedBarber] = useState<'Lycan'>('Lycan');
   const [selectedDate, setSelectedDate] = useState<string>('');
   const [preferredTime, setPreferredTime] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
   const [loadingServices, setLoadingServices] = useState<boolean>(true);
   const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState('All Services');
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [bookingSuccess, setBookingSuccess] = useState<Appointment | null>(null);
+  const [restoredDraft, setRestoredDraft] = useState<BookingDraft | null>(null);
+  const [draftReady, setDraftReady] = useState(false);
 
-  // Default to tomorrow's date
+  // Restore a saved booking before loading the service catalog.
   useEffect(() => {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    setSelectedDate(tomorrow.toISOString().split('T')[0]);
+    const draft = readBookingDraft();
+    setRestoredDraft(draft);
+    if (draft) {
+      setSelectedBarber(draft.barberName);
+      setSelectedDate(draft.appointmentDate || getTomorrowDate());
+      setPreferredTime(draft.preferredTime);
+      setNotes(draft.notes);
+      setStep(draft.step);
+    } else {
+      setSelectedDate(getTomorrowDate());
+    }
+    setDraftReady(true);
   }, []);
 
-  // Fetch the active service catalog.
+  // Only active database services are eligible for booking.
   useEffect(() => {
+    if (!draftReady || authLoading) return;
+    let cancelled = false;
+
     async function loadInitialData() {
+      setLoadingServices(true);
+      setCatalogError(null);
       try {
-        const servicesRes = await serviceService.getServices();
-        if (servicesRes.success) {
-          setServices(servicesRes.data);
-          if (preselectedService) {
-            const found = servicesRes.data.find((s) => s._id === preselectedService);
-            if (found) {
-              setSelectedService(found);
-              setStep(2);
-            }
-          }
+        const servicesRes = await serviceService.getServices({ active: 'true' });
+        if (!servicesRes.success) {
+          throw new Error('Unable to load salon services.');
+        }
+        if (cancelled) return;
+
+        const activeServices = servicesRes.data.filter((service) => service.isActive);
+        setServices(activeServices);
+        const requestedServiceId = restoredDraft?.serviceId || preselectedService;
+        if (!requestedServiceId) return;
+
+        const found = activeServices.find((service) => service._id === requestedServiceId);
+        if (!found) {
+          setSelectedService(null);
+          setError('That service is no longer available. Please choose another active service.');
+          if (restoredDraft) clearBookingDraft();
+          return;
+        }
+
+        setSelectedService(found);
+        setStep(restoredDraft?.step ?? 2);
+        if (!isAuthenticated) {
+          saveBookingDraft({
+            serviceId: found._id,
+            barberName: restoredDraft?.barberName || 'Lycan',
+            appointmentDate: restoredDraft?.appointmentDate || getTomorrowDate(),
+            preferredTime: restoredDraft?.preferredTime || '',
+            notes: restoredDraft?.notes || '',
+            step: restoredDraft?.step ?? 2,
+          });
+          router.replace('/login');
         }
       } catch (err) {
-        console.error('Failed to load booking catalog:', err);
-        setCatalogError('Unable to load salon services. Please refresh and try again.');
+        if (!cancelled) {
+          console.error('Failed to load booking catalog:', err);
+          setCatalogError('Unable to load salon services. Please refresh and try again.');
+        }
       } finally {
-        setLoadingServices(false);
+        if (!cancelled) setLoadingServices(false);
       }
     }
     loadInitialData();
-  }, [preselectedService]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authLoading, draftReady, isAuthenticated, preselectedService, restoredDraft, router]);
+
+  useEffect(() => {
+    if (!draftReady || !selectedService || bookingSuccess) return;
+    saveBookingDraft({
+      serviceId: selectedService._id,
+      barberName: selectedBarber,
+      appointmentDate: selectedDate,
+      preferredTime,
+      notes,
+      step,
+    });
+  }, [bookingSuccess, draftReady, notes, preferredTime, selectedBarber, selectedDate, selectedService, step]);
+
+  const categorizedServices = services.map((service) => ({
+    service,
+    category: getServiceCategory(service),
+  }));
+  const categories = ['All Services', ...Array.from(new Set(categorizedServices.map(({ category }) => category)))];
+  const filteredServices = selectedCategory === 'All Services'
+    ? categorizedServices
+    : categorizedServices.filter(({ category }) => category === selectedCategory);
+
+  const saveDraftAndRedirect = (nextStep: BookingStep) => {
+    if (!selectedService) return;
+    saveBookingDraft({
+      serviceId: selectedService._id,
+      barberName: selectedBarber,
+      appointmentDate: selectedDate || getTomorrowDate(),
+      preferredTime,
+      notes,
+      step: nextStep,
+    });
+    router.push('/login');
+  };
+
+  const handleContinue = (nextStep: BookingStep) => {
+    if (!selectedService) return;
+    setError(null);
+    if (!isAuthenticated) {
+      saveDraftAndRedirect(nextStep);
+      return;
+    }
+    setStep(nextStep);
+  };
 
   const handleBookingSubmit = async () => {
     if (!isAuthenticated) {
-      router.push(`/login?redirect=/book${selectedService ? `?service=${selectedService._id}` : ''}`);
+      saveDraftAndRedirect(3);
       return;
     }
 
@@ -102,6 +261,7 @@ function BookingWizard() {
       });
 
       if (res.success && res.data) {
+        clearBookingDraft();
         setBookingSuccess(res.data);
       } else {
         setError(res.message || 'Failed to complete booking.');
@@ -183,6 +343,10 @@ function BookingWizard() {
                 setBookingSuccess(null);
                 setStep(1);
                 setSelectedService(null);
+                setSelectedDate(getTomorrowDate());
+                setPreferredTime('');
+                setNotes('');
+                clearBookingDraft();
               }}
             >
               Book Another Service
@@ -227,60 +391,151 @@ function BookingWizard() {
             {/* STEP 1: Select Service */}
             {step === 1 && (
               <div className="space-y-6">
-                <div>
+                <div className="text-center sm:text-left">
                   <h3 className="font-serif text-xl font-bold text-zinc-900">Choose a Treatment</h3>
-                  <p className="text-xs text-zinc-500 mt-1">Select from our signature hair and beauty rituals</p>
+                  <p className="text-xs text-zinc-500 mt-1">
+                    Choose one service from our active salon menu.
+                  </p>
                 </div>
 
                 {loadingServices ? (
-                  <div className="py-12 text-center text-xs text-zinc-500">Loading services...</div>
+                  <div className="py-16 text-center space-y-3">
+                    <div className="w-8 h-8 border-2 border-champagne-300 border-t-zinc-900 rounded-full animate-spin mx-auto" />
+                    <p className="text-xs text-zinc-500">Loading active salon services...</p>
+                  </div>
                 ) : catalogError ? (
-                  <div className="py-12 text-center text-xs text-rose-600">{catalogError}</div>
-                ) : services.length === 0 ? (
-                  <div className="py-12 text-center text-xs text-zinc-500">No services are available to book right now.</div>
+                  <div className="py-12 px-4 text-center rounded-xl border border-rose-200 bg-rose-50 text-sm text-rose-700">
+                    <AlertCircle className="w-5 h-5 mx-auto mb-2" />
+                    {catalogError}
+                  </div>
+                ) : categorizedServices.length === 0 ? (
+                  <div className="py-14 px-4 text-center rounded-xl border border-dashed border-zinc-200 bg-zinc-50">
+                    <Sparkles className="w-8 h-8 text-champagne-400 mx-auto mb-2" />
+                    <p className="text-sm font-semibold text-zinc-800">No active services are available.</p>
+                    <p className="text-xs text-zinc-500 mt-1">Please check back soon.</p>
+                  </div>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {services.map((s) => {
-                      const isSelected = selectedService?._id === s._id;
-                      return (
-                        <div
-                          key={s._id}
-                          onClick={() => setSelectedService(s)}
-                          className={`p-5 rounded-xl border cursor-pointer transition-all ${
-                            isSelected
-                              ? 'border-zinc-900 bg-champagne-50/40 ring-1 ring-zinc-900'
-                              : 'border-zinc-200 hover:border-champagne-400 bg-white'
+                  <div className="space-y-6">
+                    <div className="flex gap-2 overflow-x-auto pb-2 sm:flex-wrap sm:justify-center">
+                      {categories.map((category) => (
+                        <button
+                          key={category}
+                          type="button"
+                          aria-pressed={selectedCategory === category}
+                          onClick={() => setSelectedCategory(category)}
+                          className={`shrink-0 rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-wider transition-colors ${
+                            selectedCategory === category
+                              ? 'bg-zinc-900 text-white shadow-sm'
+                              : 'bg-zinc-100 text-zinc-600 hover:bg-champagne-100 hover:text-zinc-900'
                           }`}
                         >
-                          <div className="flex items-start justify-between">
-                            <div>
-                              <span className="text-[10px] font-semibold uppercase tracking-wider text-champagne-800 bg-champagne-100/80 px-2 py-0.5 rounded">
-                                {s.category || 'Hair'}
-                              </span>
-                              <h4 className="font-serif font-bold text-zinc-900 text-base mt-2">{s.name}</h4>
-                              <p className="text-xs text-zinc-500 mt-1 line-clamp-2">{s.description}</p>
+                          {category}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                      {filteredServices.map(({ service, category }) => {
+                        const isSelected = selectedService?._id === service._id;
+                        const CategoryIcon = getCategoryIcon(category);
+                        const serviceImage = getServiceImage(service, category);
+                        return (
+                          <button
+                            key={service._id}
+                            type="button"
+                            aria-pressed={isSelected}
+                            onClick={() => {
+                              setSelectedService(service);
+                              setError(null);
+                            }}
+                            className={`group overflow-hidden rounded-xl border text-left transition-all focus:outline-none focus:ring-2 focus:ring-champagne-500 ${
+                              isSelected
+                                ? 'border-zinc-900 bg-champagne-50/50 ring-2 ring-zinc-900 shadow-md'
+                                : 'border-zinc-200 bg-white hover:-translate-y-0.5 hover:border-champagne-400 hover:shadow-md'
+                            }`}
+                          >
+                            <div className="relative aspect-[16/10] overflow-hidden bg-champagne-50">
+                              {serviceImage ? (
+                                <img
+                                  src={serviceImage}
+                                  alt={service.name}
+                                  className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                                />
+                              ) : (
+                                <div className="flex h-full flex-col items-center justify-center gap-2 bg-gradient-to-br from-champagne-50 via-white to-zinc-100 text-champagne-800">
+                                  <CategoryIcon className="h-10 w-10 text-champagne-600" />
+                                  <span className="text-[10px] font-semibold uppercase tracking-[0.18em]">
+                                    {category}
+                                  </span>
+                                </div>
+                              )}
+                              {isSelected && (
+                                <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-zinc-900 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-white shadow">
+                                  <Check className="h-3 w-3" /> Selected
+                                </span>
+                              )}
                             </div>
-                          </div>
-                          <div className="mt-4 pt-3 border-t border-zinc-100 flex items-center justify-between text-xs">
-                            <span className="flex items-center gap-1 text-zinc-500">
-                              <Clock className="w-3.5 h-3.5" />
-                              {s.duration} mins
-                            </span>
-                            <span className="font-bold text-zinc-900">{formatPrice(s.price)}</span>
-                          </div>
-                        </div>
-                      );
-                    })}
+                            <div className="space-y-3 p-4">
+                              <div>
+                                <span className="rounded bg-champagne-100/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-champagne-900">
+                                  {category}
+                                </span>
+                                <h4 className="mt-2 font-serif text-base font-bold text-zinc-900">
+                                  {service.name}
+                                </h4>
+                                <p className="mt-1 line-clamp-2 min-h-8 text-xs leading-relaxed text-zinc-500">
+                                  {service.description}
+                                </p>
+                              </div>
+                              <div className="flex items-center justify-between border-t border-zinc-100 pt-3 text-xs">
+                                <span className="flex items-center gap-1.5 text-zinc-500">
+                                  <Clock className="h-3.5 w-3.5" /> {service.duration} min
+                                </span>
+                                <span className="font-bold text-zinc-900">{formatPrice(service.price)}</span>
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
 
-                <div className="flex justify-end pt-4">
+                {selectedService && (
+                  <div className="flex flex-col gap-4 rounded-xl border border-champagne-200 bg-champagne-50/60 p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-semibold uppercase tracking-widest text-champagne-800">
+                        Selected Service
+                      </p>
+                      <p className="mt-1 truncate font-serif text-base font-bold text-zinc-900">
+                        {selectedService.name}
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4 sm:shrink-0 sm:gap-6">
+                      <div>
+                        <span className="block text-[10px] uppercase tracking-wider text-zinc-500">Total Price</span>
+                        <span className="font-bold text-zinc-900">{formatPrice(selectedService.price)}</span>
+                      </div>
+                      <div>
+                        <span className="block text-[10px] uppercase tracking-wider text-zinc-500">Estimated Time</span>
+                        <span className="font-bold text-zinc-900">{selectedService.duration} min</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex flex-col items-end gap-2 border-t border-zinc-100 pt-5">
+                  {!isAuthenticated && (
+                    <p className="text-right text-xs text-zinc-500">
+                      Sign in is required to continue. Your selection will be saved.
+                    </p>
+                  )}
                   <Button
-                    disabled={!selectedService}
-                    onClick={() => setStep(2)}
-                    className="gap-2"
+                    disabled={!selectedService || loadingServices}
+                    onClick={() => handleContinue(2)}
+                    className="w-full justify-center gap-2 px-8 sm:w-auto"
                   >
-                    Continue to Schedule <ArrowRight className="w-4 h-4" />
+                    Continue <ArrowRight className="h-4 w-4" />
                   </Button>
                 </div>
               </div>
@@ -309,7 +564,7 @@ function BookingWizard() {
                     <input
                       type="date"
                       value={selectedDate}
-                      min={new Date().toISOString().split('T')[0]}
+                      min={getTodayDate()}
                       onChange={(e) => setSelectedDate(e.target.value)}
                       className="w-full px-3.5 py-2.5 text-sm bg-white border border-zinc-200 rounded-md text-zinc-900 focus:outline-none focus:ring-1 focus:ring-zinc-900"
                     />
@@ -345,7 +600,9 @@ function BookingWizard() {
                         type="button"
                         disabled={!barber.available}
                         aria-pressed={selectedBarber === barber.name}
-                        onClick={() => setSelectedBarber(barber.name)}
+                        onClick={() => {
+                          if (barber.available) setSelectedBarber('Lycan');
+                        }}
                         className={`p-4 rounded-lg border text-left text-sm transition-colors ${
                           !barber.available
                             ? 'cursor-not-allowed border-zinc-200 bg-zinc-50 text-zinc-400'
@@ -367,7 +624,7 @@ function BookingWizard() {
                   <Button variant="outline" onClick={() => setStep(1)}>
                     Back
                   </Button>
-                  <Button disabled={!selectedDate || !preferredTime} onClick={() => setStep(3)} className="gap-2">
+                  <Button disabled={!selectedDate || !preferredTime} onClick={() => handleContinue(3)} className="gap-2">
                     Review Details <ArrowRight className="w-4 h-4" />
                   </Button>
                 </div>

@@ -10,6 +10,22 @@ import { verificationTemplate, passwordResetTemplate } from '../utils/emailTempl
 
 const router = Router();
 
+const createSession = (userId: string, role: string, res: Response) => {
+  const accessToken = generateAccessToken(userId, role);
+  const refreshToken = generateRefreshToken(userId);
+  res.cookie('accessToken', accessToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+  });
+  res.cookie('refreshToken', refreshToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: 30 * 24 * 60 * 60 * 1000,
+  });
+  return { accessToken, refreshToken };
+};
+
 // @route   POST /api/auth/register
 router.post('/register', [
   body('fullName').trim().notEmpty().withMessage('Full name is required'),
@@ -49,6 +65,10 @@ router.post('/register', [
     });
     res.status(201).json({ success: true, message: 'Registration successful. Please verify your email.' });
   } catch (error) {
+    if ((error as { code?: number }).code === 11000) {
+      res.status(400).json({ success: false, message: 'Email already registered.' });
+      return;
+    }
     res.status(500).json({ success: false, message: 'Server error during registration.' });
   }
 });
@@ -75,13 +95,14 @@ router.post('/login', [
       res.status(401).json({ success: false, message: 'Invalid credentials.' });
       return;
     }
+    if (user.role === 'customer' && !user.isEmailVerified) {
+      res.status(403).json({ success: false, message: 'Please verify your email before logging in.' });
+      return;
+    }
     user.lastLogin = new Date();
     await user.save({ validateBeforeSave: false });
-    const accessToken = generateAccessToken(user._id.toString(), user.role);
-    const refreshToken = generateRefreshToken(user._id.toString());
-    res.cookie('accessToken', accessToken, { httpOnly: true, secure: process.env.NODE_ENV === 'production', maxAge: 7 * 24 * 60 * 60 * 1000 });
-    res.cookie('refreshToken', refreshToken, { httpOnly: true, secure: process.env.NODE_ENV === 'production', maxAge: 30 * 24 * 60 * 60 * 1000 });
-    res.json({ success: true, data: { user, accessToken, refreshToken } });
+    const tokens = createSession(user._id.toString(), user.role, res);
+    res.json({ success: true, data: { user, ...tokens } });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Server error during login.' });
   }
@@ -171,13 +192,19 @@ router.post('/verify-email', async (req: Request, res: Response): Promise<void> 
       res.status(400).json({ success: false, message: 'Invalid or expired verification token.' });
       return;
     }
+    if (!user.isActive) {
+      res.status(403).json({ success: false, message: 'This account is inactive.' });
+      return;
+    }
     user.isEmailVerified = true;
     user.emailVerificationToken = undefined;
     user.emailVerificationExpiry = undefined;
     user.emailVerificationOTP = undefined;
     user.emailVerificationOTPExpiry = undefined;
+    user.lastLogin = new Date();
     await user.save({ validateBeforeSave: false });
-    res.json({ success: true, message: 'Email verified successfully.' });
+    const tokens = createSession(user._id.toString(), user.role, res);
+    res.json({ success: true, message: 'Email verified successfully.', data: { user, ...tokens } });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Server error.' });
   }
@@ -255,7 +282,10 @@ router.post('/refresh', async (req: Request, res: Response): Promise<void> => {
     if (!token) { res.status(401).json({ success: false, message: 'No refresh token.' }); return; }
     const decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET as string) as { id: string };
     const user = await User.findById(decoded.id);
-    if (!user || !user.isActive) { res.status(401).json({ success: false, message: 'Invalid token.' }); return; }
+    if (!user || !user.isActive || (user.role === 'customer' && !user.isEmailVerified)) {
+      res.status(401).json({ success: false, message: 'Invalid token.' });
+      return;
+    }
     const newAccessToken = generateAccessToken(user._id.toString(), user.role);
     res.cookie('accessToken', newAccessToken, { httpOnly: true, secure: process.env.NODE_ENV === 'production', maxAge: 7 * 24 * 60 * 60 * 1000 });
     res.json({ success: true, data: { accessToken: newAccessToken } });

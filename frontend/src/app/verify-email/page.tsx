@@ -1,17 +1,20 @@
 'use client';
 
-import React, { useEffect, useState, Suspense } from 'react';
+import React, { useEffect, useRef, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { PublicLayout } from '../../layouts/PublicLayout';
-import { Button } from '../../components/ui/Button';
 import { authService } from '../../services/authService';
+import { useAuth } from '../../context/AuthContext';
+import { readBookingDraft } from '../../utils/bookingDraft';
 import { Sparkles, CheckCircle2, AlertCircle } from 'lucide-react';
 
 function VerifyEmailContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { login } = useAuth();
   const token = searchParams.get('token');
+  const verificationStarted = useRef<string | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [success, setSuccess] = useState(false);
@@ -24,12 +27,16 @@ function VerifyEmailContent() {
         setLoading(false);
         return;
       }
+      if (verificationStarted.current === token) return;
+      verificationStarted.current = token;
       try {
         const res = await authService.verifyEmail(token);
-        if (res.success) {
+        if (res.success && res.data?.user && res.data.accessToken && res.data.refreshToken) {
+          login(res.data.accessToken, res.data.refreshToken, res.data.user);
           setSuccess(true);
+          router.replace(readBookingDraft() ? '/book' : '/customer/dashboard');
         } else {
-          setError(res.message || 'Verification failed.');
+          setError(res.message || 'Verification succeeded, but automatic sign in failed. Please sign in.');
         }
       } catch (err: any) {
         setError(err.response?.data?.message || 'Invalid or expired token.');
@@ -38,7 +45,7 @@ function VerifyEmailContent() {
       }
     }
     verify();
-  }, [token]);
+  }, [token, login, router]);
 
   return (
     <div className="w-full max-w-md bg-white p-8 sm:p-10 rounded-2xl border border-zinc-200/80 shadow-xl text-center space-y-6">
@@ -56,10 +63,7 @@ function VerifyEmailContent() {
       ) : success ? (
         <div className="space-y-4">
           <CheckCircle2 className="w-12 h-12 text-emerald-600 mx-auto" />
-          <p className="text-sm text-zinc-700">Your email has been verified successfully!</p>
-          <Button onClick={() => router.push('/login')} className="w-full">
-            Proceed to Sign In
-          </Button>
+          <p className="text-sm text-zinc-700">Your email is verified. You are signed in and being redirected.</p>
         </div>
       ) : (
         <div className="space-y-4">
