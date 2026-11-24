@@ -9,4 +9,4 @@ export interface AuthRequest extends Request {
 }
 
 export type UserRole = 'super_admin' | 'sub_admin' | 'customer';
-export type AppointmentStatus = 'pending' | 'accepted' | 'rejected' | 'cancelled' | 'completed' | 'no_show';
+export type AppointmentStatus = 'pending' | 'accepted' | 'confirmed' | 'reschedule_requested' | 'rejected' | 'cancelled' | 'completed' | 'no_show';

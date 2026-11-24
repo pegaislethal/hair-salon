@@ -18,7 +18,7 @@ export const runReminderCheck = async (): Promise<{ success: boolean; sent24h: n
 
     // 24h reminders
     const appointments24h = await Appointment.find({
-      status: 'accepted',
+      status: { $in: ['accepted', 'confirmed'] },
       'notifications.reminder24hSent': false,
       appointmentDate: { $gte: new Date(in24h.getTime() - window15m), $lte: new Date(in24h.getTime() + window15m) },
     }).populate('customer', 'fullName email phone').populate('service', 'name');
@@ -54,7 +54,7 @@ export const runReminderCheck = async (): Promise<{ success: boolean; sent24h: n
 
     // 2h reminders
     const appointments2h = await Appointment.find({
-      status: 'accepted',
+      status: { $in: ['accepted', 'confirmed'] },
       'notifications.reminder2hSent': false,
       appointmentDate: { $gte: new Date(in2h.getTime() - window15m), $lte: new Date(in2h.getTime() + window15m) },
     }).populate('customer', 'fullName email phone').populate('service', 'name');
@@ -91,7 +91,7 @@ export const runReminderCheck = async (): Promise<{ success: boolean; sent24h: n
     // Auto-mark no-shows (appointments that passed 2h ago without being completed)
     const noShowCutoff = new Date(now.getTime() - 2 * 60 * 60 * 1000);
     const noShowResult = await Appointment.updateMany(
-      { status: 'accepted', appointmentDate: { $lt: noShowCutoff } },
+      { status: { $in: ['accepted', 'confirmed'] }, appointmentDate: { $lt: noShowCutoff } },
       { status: 'no_show' }
     );
 

@@ -4,18 +4,14 @@ import React, { useEffect, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { PublicLayout } from '../../layouts/PublicLayout';
-import { Service, Staff } from '../../types';
+import { Appointment, Service } from '../../types';
 import { serviceService } from '../../services/serviceService';
-import { staffService } from '../../services/staffService';
 import { appointmentService } from '../../services/appointmentService';
 import { useAuth } from '../../context/AuthContext';
 import { Button } from '../../components/ui/Button';
 import { formatPrice, formatTime12 } from '../../utils/format';
 import {
-  Calendar as CalendarIcon,
   Clock,
-  User as UserIcon,
-  Scissors,
   CheckCircle2,
   Sparkles,
   AlertCircle,
@@ -23,28 +19,32 @@ import {
   ChevronLeft,
 } from 'lucide-react';
 
+const getErrorMessage = (error: unknown, fallback: string): string => {
+  if (typeof error === 'object' && error !== null && 'response' in error) {
+    const response = (error as { response?: { data?: { message?: unknown } } }).response;
+    if (typeof response?.data?.message === 'string') return response.data.message;
+  }
+  return fallback;
+};
+
 function BookingWizard() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const preselectedService = searchParams.get('service');
-  const { user, isAuthenticated } = useAuth();
+  const { isAuthenticated } = useAuth();
 
   const [step, setStep] = useState<number>(1);
   const [services, setServices] = useState<Service[]>([]);
-  const [staffList, setStaffList] = useState<Staff[]>([]);
-  const [availableStaffIds, setAvailableStaffIds] = useState<string[]>([]);
   const [selectedService, setSelectedService] = useState<Service | null>(null);
-  const [selectedStaff, setSelectedStaff] = useState<Staff | null>(null);
+  const [selectedBarber, setSelectedBarber] = useState('Lycan');
   const [selectedDate, setSelectedDate] = useState<string>('');
-  const [availableSlots, setAvailableSlots] = useState<string[]>([]);
-  const [selectedSlot, setSelectedSlot] = useState<string>('');
+  const [preferredTime, setPreferredTime] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
   const [loadingServices, setLoadingServices] = useState<boolean>(true);
   const [catalogError, setCatalogError] = useState<string | null>(null);
-  const [loadingSlots, setLoadingSlots] = useState<boolean>(false);
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [bookingSuccess, setBookingSuccess] = useState<any | null>(null);
+  const [bookingSuccess, setBookingSuccess] = useState<Appointment | null>(null);
 
   // Default to tomorrow's date
   useEffect(() => {
@@ -53,30 +53,24 @@ function BookingWizard() {
     setSelectedDate(tomorrow.toISOString().split('T')[0]);
   }, []);
 
-  // Fetch services and staff
+  // Fetch the active service catalog.
   useEffect(() => {
     async function loadInitialData() {
       try {
-        const [servicesRes, staffRes] = await Promise.allSettled([
-          serviceService.getServices(),
-          staffService.getStaff(),
-        ]);
-        if (servicesRes.status === 'fulfilled' && servicesRes.value.success) {
-          setServices(servicesRes.value.data);
+        const servicesRes = await serviceService.getServices();
+        if (servicesRes.success) {
+          setServices(servicesRes.data);
           if (preselectedService) {
-            const found = servicesRes.value.data.find((s) => s._id === preselectedService);
+            const found = servicesRes.data.find((s) => s._id === preselectedService);
             if (found) {
               setSelectedService(found);
               setStep(2);
             }
           }
         }
-        if (staffRes.status === 'fulfilled' && staffRes.value.success) {
-          setStaffList(staffRes.value.data);
-        }
       } catch (err) {
         console.error('Failed to load booking catalog:', err);
-        setCatalogError('Unable to load services and barbers. Please refresh and try again.');
+        setCatalogError('Unable to load salon services. Please refresh and try again.');
       } finally {
         setLoadingServices(false);
       }
@@ -84,48 +78,14 @@ function BookingWizard() {
     loadInitialData();
   }, [preselectedService]);
 
-  // Fetch available slots when service, date, or staff change
-  useEffect(() => {
-    if (!selectedService || !selectedDate) return;
-
-    async function fetchSlots() {
-      setLoadingSlots(true);
-      setError(null);
-      try {
-        const [res, barberAvailability] = await Promise.all([
-          appointmentService.getAvailableSlots(selectedService!._id, selectedDate, selectedStaff?._id),
-          staffService.getAvailableStaff(selectedService!._id, selectedDate),
-        ]);
-        setAvailableStaffIds(barberAvailability.data);
-        if (selectedStaff && !barberAvailability.data.includes(selectedStaff._id)) setSelectedStaff(null);
-        if (res.success && res.data) {
-          setAvailableSlots(res.data);
-          setSelectedSlot((current) => res.data.includes(current) ? current : (res.data[0] || ''));
-        } else {
-          setAvailableSlots([]);
-          setSelectedSlot('');
-          setError(res.message || 'Unable to check barber availability.');
-        }
-      } catch (err) {
-        setAvailableSlots([]);
-        setSelectedSlot('');
-        setError('Unable to check live availability. Please try again.');
-      } finally {
-        setLoadingSlots(false);
-      }
-    }
-
-    fetchSlots();
-  }, [selectedService, selectedDate, selectedStaff]);
-
   const handleBookingSubmit = async () => {
     if (!isAuthenticated) {
       router.push(`/login?redirect=/book${selectedService ? `?service=${selectedService._id}` : ''}`);
       return;
     }
 
-    if (!selectedService || !selectedDate || !selectedSlot) {
-      setError('Please select a service, date, and appointment time slot.');
+    if (!selectedService || !selectedDate || !preferredTime || selectedBarber !== 'Lycan') {
+      setError('Please select a service, date, preferred time, and available barber.');
       return;
     }
 
@@ -136,8 +96,8 @@ function BookingWizard() {
       const res = await appointmentService.createAppointment({
         serviceId: selectedService._id,
         appointmentDate: selectedDate,
-        startTime: selectedSlot,
-        staffId: selectedStaff?._id,
+        startTime: preferredTime,
+        barberName: selectedBarber,
         customerNotes: notes,
       });
 
@@ -146,8 +106,8 @@ function BookingWizard() {
       } else {
         setError(res.message || 'Failed to complete booking.');
       }
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Could not complete your booking request.');
+    } catch (err) {
+      setError(getErrorMessage(err, 'Could not submit your booking request.'));
     } finally {
       setSubmitting(false);
     }
@@ -165,7 +125,7 @@ function BookingWizard() {
           Reserve Your Salon Experience
         </h1>
         <p className="text-xs sm:text-sm text-zinc-500">
-          Step-by-step reservation with real-time stylist availability
+          Send your preferred date and time for confirmation by our salon team
         </p>
       </div>
 
@@ -194,9 +154,13 @@ function BookingWizard() {
               <span className="font-semibold text-zinc-900">{selectedService?.name}</span>
             </div>
             <div className="flex justify-between text-xs border-b border-champagne-200/60 pb-2">
+              <span className="text-zinc-500">Barber</span>
+              <span className="font-semibold text-zinc-900">Lycan</span>
+            </div>
+            <div className="flex justify-between text-xs border-b border-champagne-200/60 pb-2">
               <span className="text-zinc-500">Date & Time</span>
               <span className="font-semibold text-zinc-900">
-                {selectedDate} at {formatTime12(selectedSlot)}
+                {selectedDate} at {formatTime12(preferredTime)}
               </span>
             </div>
             <div className="flex justify-between text-xs">
@@ -248,7 +212,7 @@ function BookingWizard() {
                 step === 3 ? 'bg-white font-bold text-zinc-900 border-b-2 border-b-champagne-600' : 'text-zinc-500'
               }`}
             >
-              <span className="text-xs uppercase tracking-wider">3. Review & Confirm</span>
+              <span className="text-xs uppercase tracking-wider">3. Submit Request</span>
             </div>
           </div>
 
@@ -338,7 +302,6 @@ function BookingWizard() {
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                  {/* Date Picker */}
                   <div className="space-y-2">
                     <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-700">
                       Appointment Date
@@ -351,91 +314,60 @@ function BookingWizard() {
                       className="w-full px-3.5 py-2.5 text-sm bg-white border border-zinc-200 rounded-md text-zinc-900 focus:outline-none focus:ring-1 focus:ring-zinc-900"
                     />
                   </div>
-
-                </div>
-
-                <div className="space-y-3">
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-700">
-                    Choose a Barber
-                  </label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedStaff(null)}
-                      className={`p-4 rounded-lg border text-left text-sm transition-colors ${!selectedStaff ? 'border-zinc-900 bg-champagne-50' : 'border-zinc-200 hover:border-champagne-400'}`}
-                    >
-                      <span className="font-semibold text-zinc-900">Any Available Barber</span>
-                      <span className="block text-xs text-zinc-500 mt-1">We&apos;ll match you with an available barber.</span>
-                    </button>
-                    {staffList.filter((staff) => staff.isActive && availableStaffIds.includes(staff._id)).map((staff) => {
-                      const barberUser = typeof staff.user === 'object' ? staff.user : null;
-                      const name = barberUser?.fullName || 'Barber';
-                      const image = staff.profileImage || barberUser?.profileImage;
-                      const specializations = staff.specializations?.length ? staff.specializations : staff.bio ? [staff.bio] : [];
-                      return (
-                        <button
-                          key={staff._id}
-                          type="button"
-                          onClick={() => setSelectedStaff(staff)}
-                          className={`p-4 rounded-lg border text-left transition-colors ${selectedStaff?._id === staff._id ? 'border-zinc-900 bg-champagne-50' : 'border-zinc-200 hover:border-champagne-400'}`}
-                        >
-                          <span className="flex items-center gap-3">
-                            {image ? (
-                              <img src={image} alt="" className="w-12 h-12 rounded-full object-cover" />
-                            ) : (
-                              <span className="w-12 h-12 rounded-full bg-champagne-100 flex items-center justify-center font-semibold text-champagne-900">{name[0]}</span>
-                            )}
-                            <span>
-                              <span className="block font-semibold text-zinc-900">{name}</span>
-                              <span className="block text-xs text-zinc-500 mt-1">{specializations.join(', ') || 'Haircut & styling'}</span>
-                            </span>
-                          </span>
-                        </button>
-                      );
-                    })}
+                  <div className="space-y-2">
+                    <label className="block text-xs font-semibold tracking-wider text-zinc-700" htmlFor="preferred-appointment-time">
+                      Preferred Appointment Time
+                    </label>
+                    <input
+                      id="preferred-appointment-time"
+                      type="time"
+                      required
+                      value={preferredTime}
+                      onChange={(e) => setPreferredTime(e.target.value)}
+                      className="w-full px-3.5 py-2.5 text-sm bg-white border border-zinc-200 rounded-md text-zinc-900 focus:outline-none focus:ring-1 focus:ring-zinc-900"
+                    />
+                    <p className="text-xs text-zinc-500">
+                      Your requested appointment time is subject to availability and will be confirmed by our salon team.
+                    </p>
                   </div>
                 </div>
 
-                {/* Slots Grid */}
-                <div className="space-y-3 pt-2">
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-700">
-                    Available Time Slots on {selectedDate}
-                  </label>
-
-                  {loadingSlots ? (
-                    <div className="py-8 text-center text-xs text-zinc-500">Checking slot availability...</div>
-                  ) : availableSlots.length === 0 ? (
-                    <div className="p-4 bg-zinc-50 rounded-lg text-center text-xs text-zinc-500">
-                      No open slots on this date. Please pick another date.
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2.5">
-                      {availableSlots.map((slot) => {
-                        const isPicked = selectedSlot === slot;
-                        return (
-                          <button
-                            key={slot}
-                            type="button"
-                            onClick={() => setSelectedSlot(slot)}
-                            className={`py-2 px-3 rounded-md text-xs font-medium border transition-all ${
-                              isPicked
-                                ? 'bg-zinc-900 text-white border-zinc-900 shadow-sm'
-                                : 'bg-white text-zinc-700 border-zinc-200 hover:border-champagne-400'
-                            }`}
-                          >
-                            {formatTime12(slot)}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
+                <div className="space-y-3">
+                  <h4 className="block text-xs font-semibold uppercase tracking-wider text-zinc-700">Choose a Barber</h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {[
+                      { name: 'Yujin (Intern)', available: false },
+                      { name: 'Rohit (Intern)', available: false },
+                      { name: 'Lycan', available: true },
+                    ].map((barber) => (
+                      <button
+                        key={barber.name}
+                        type="button"
+                        disabled={!barber.available}
+                        aria-pressed={selectedBarber === barber.name}
+                        onClick={() => setSelectedBarber(barber.name)}
+                        className={`p-4 rounded-lg border text-left text-sm transition-colors ${
+                          !barber.available
+                            ? 'cursor-not-allowed border-zinc-200 bg-zinc-50 text-zinc-400'
+                            : selectedBarber === barber.name
+                              ? 'border-zinc-900 bg-champagne-50'
+                              : 'border-zinc-200 hover:border-champagne-400'
+                        }`}
+                      >
+                        <span className="font-semibold">{barber.name}</span>
+                        <span className="block text-xs mt-1">
+                          {barber.available ? 'Available to request' : 'Temporarily unavailable'}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 <div className="flex justify-between pt-4 border-t border-zinc-100">
                   <Button variant="outline" onClick={() => setStep(1)}>
                     Back
                   </Button>
-                  <Button disabled={!selectedSlot} onClick={() => setStep(3)} className="gap-2">
+                  <Button disabled={!selectedDate || !preferredTime} onClick={() => setStep(3)} className="gap-2">
                     Review Details <ArrowRight className="w-4 h-4" />
                   </Button>
                 </div>
@@ -446,8 +378,8 @@ function BookingWizard() {
             {step === 3 && (
               <div className="space-y-6">
                 <div>
-                  <h3 className="font-serif text-xl font-bold text-zinc-900">Review & Confirm</h3>
-                  <p className="text-xs text-zinc-500 mt-1">Confirm your booking details and client information</p>
+                  <h3 className="font-serif text-xl font-bold text-zinc-900">Review Request Details</h3>
+                  <p className="text-xs text-zinc-500 mt-1">Your requested time will be confirmed by our salon team.</p>
                 </div>
 
                 {/* Summary Card */}
@@ -469,16 +401,12 @@ function BookingWizard() {
                     </div>
                     <div>
                       <span className="text-zinc-500 block">Time</span>
-                      <span className="font-semibold text-zinc-900">{formatTime12(selectedSlot)}</span>
+                      <span className="font-semibold text-zinc-900">{formatTime12(preferredTime)}</span>
                     </div>
                     <div>
                       <span className="text-zinc-500 block">Stylist</span>
                       <span className="font-semibold text-zinc-900">
-                        {selectedStaff
-                          ? typeof selectedStaff.user === 'object'
-                            ? selectedStaff.user.fullName
-                            : 'Assigned Barber'
-                          : 'Any Available Barber'}
+                        {selectedBarber}
                       </span>
                     </div>
                   </div>
@@ -500,7 +428,7 @@ function BookingWizard() {
 
                 {!isAuthenticated && (
                   <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800 space-y-2">
-                    <p className="font-semibold">Sign in required to confirm booking</p>
+                    <p className="font-semibold">Sign in required to request an appointment</p>
                     <p>
                       You will be prompted to quickly log in or create an account so your appointment can be linked and verified.
                     </p>
@@ -512,7 +440,7 @@ function BookingWizard() {
                     Back
                   </Button>
                   <Button isLoading={submitting} onClick={handleBookingSubmit} className="gap-2 px-8">
-                    {isAuthenticated ? 'Confirm Appointment' : 'Sign In & Reserve'}
+                    {isAuthenticated ? 'Request Appointment' : 'Sign In & Request'}
                   </Button>
                 </div>
               </div>

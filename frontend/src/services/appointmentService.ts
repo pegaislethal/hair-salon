@@ -6,7 +6,7 @@ export const appointmentService = {
     serviceId: string;
     appointmentDate: string;
     startTime: string;
-    staffId?: string;
+    barberName: 'Lycan';
     customerNotes?: string;
   }) {
     const res = await api.post<{ success: boolean; message: string; data: Appointment }>('/appointments', data);
@@ -29,6 +29,16 @@ export const appointmentService = {
 
   async acceptAppointment(id: string) {
     const res = await api.patch<{ success: boolean; message: string; data: Appointment }>(`/appointments/${id}/accept`);
+    return res.data;
+  },
+
+  async suggestAlternativeTime(id: string, data: { appointmentDate: string; startTime: string }) {
+    const res = await api.patch<{ success: boolean; message: string; data: Appointment }>(`/appointments/${id}/suggest-time`, data);
+    return res.data;
+  },
+
+  async respondToSuggestedTime(id: string, response: 'accepted' | 'rejected') {
+    const res = await api.patch<{ success: boolean; message: string; data: Appointment }>(`/appointments/${id}/respond-suggestion`, { response });
     return res.data;
   },
 

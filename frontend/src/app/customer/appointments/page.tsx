@@ -90,7 +90,7 @@ export default function MyAppointmentsPage() {
         <div className="space-y-6">
           {/* Status Tabs */}
           <div className="flex items-center gap-2 flex-wrap border-b border-zinc-200 pb-3">
-            {['all', 'pending', 'accepted', 'completed', 'cancelled', 'rejected'].map((tab) => (
+            {['all', 'pending', 'reschedule_requested', 'confirmed', 'accepted', 'completed', 'cancelled', 'rejected'].map((tab) => (
               <button
                 key={tab}
                 onClick={() => setStatusFilter(tab)}
@@ -135,14 +135,28 @@ export default function MyAppointmentsPage() {
                       <div className="flex flex-wrap items-center gap-4 text-xs text-zinc-500">
                         <span className="flex items-center gap-1">
                           <Calendar className="w-3.5 h-3.5" />
-                          {formatDate(appt.appointmentDate)}
+                          {formatDate(
+                            ['confirmed', 'accepted'].includes(appt.status)
+                              ? appt.appointmentDate
+                              : appt.requestedAppointmentDate || appt.appointmentDate
+                          )}
                         </span>
                         <span className="flex items-center gap-1">
                           <Clock className="w-3.5 h-3.5" />
-                          {formatTime12(appt.startTime)} - {formatTime12(appt.endTime)}
+                          {formatTime12(
+                            ['confirmed', 'accepted'].includes(appt.status)
+                              ? appt.startTime
+                              : appt.requestedStartTime || appt.startTime
+                          )}
                         </span>
+                        <span>Barber: {appt.requestedBarberName || appt.staff?.fullName || '—'}</span>
                         <span className="font-semibold text-zinc-900">{formatPrice(appt.priceSnapshot)}</span>
                       </div>
+                      {appt.status === 'reschedule_requested' && appt.suggestedAppointmentDate && appt.suggestedStartTime && (
+                        <p className="text-xs text-violet-700">
+                          Alternative suggested: {formatDate(appt.suggestedAppointmentDate)} at {formatTime12(appt.suggestedStartTime)}
+                        </p>
+                      )}
                       {appt.customerNotes && (
                         <p className="text-xs text-zinc-500 italic">Notes: “{appt.customerNotes}”</p>
                       )}
@@ -155,7 +169,7 @@ export default function MyAppointmentsPage() {
                       >
                         View Details
                       </Link>
-                      {['pending', 'accepted'].includes(appt.status) && (
+                      {['pending', 'reschedule_requested', 'confirmed', 'accepted'].includes(appt.status) && (
                         <Button
                           variant="ghost"
                           size="sm"

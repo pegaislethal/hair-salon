@@ -23,18 +23,79 @@ export interface AppointmentEmailData {
   reason?: string;
   previousDate?: string;
   previousTime?: string;
+  barberName?: string;
 }
 
 export const bookingPendingTemplate = (data: AppointmentEmailData): string => layout(
   'Your booking request is pending',
   `Hi ${escapeHtml(data.customerName)}, we have received your request. It will remain <strong>PENDING</strong> until a Super Admin or authorized admin accepts it.`,
-  details([['Booking reference', data.bookingRef], ['Service', data.serviceName], ['Requested date', data.date], ['Requested time', data.time], ['Status', 'PENDING'], ['Price', data.price ? `NPR ${data.price}` : 'As listed']])
+  details([
+    ['Booking reference', data.bookingRef],
+    ['Service', data.serviceName],
+    ['Barber', data.barberName || 'Lycan'],
+    ['Requested date', data.date],
+    ['Requested time', data.time],
+    ['Status', 'PENDING'],
+    ['Price', data.price ? `NPR ${data.price}` : 'As listed'],
+  ])
 );
 
 export const bookingConfirmationTemplate = (data: AppointmentEmailData): string => layout(
   'Appointment confirmed',
   `Hi ${escapeHtml(data.customerName)}, your appointment has been accepted and confirmed.`,
   details([['Booking reference', data.bookingRef], ['Service', data.serviceName], ['Date', data.date], ['Time', data.time], ['Price', data.price ? `NPR ${data.price}` : 'As listed'], ['Status', 'CONFIRMED']])
+);
+
+export const bookingAlternativeTemplate = (data: AppointmentEmailData & {
+  suggestedDate: string;
+  suggestedTime: string;
+}): string => layout(
+  'Alternative appointment time suggested',
+  `Hi ${escapeHtml(data.customerName)}, your requested time is unavailable. Please review the suggested alternative below and accept it or contact our salon team to discuss another time.`,
+  details([
+    ['Booking reference', data.bookingRef],
+    ['Service', data.serviceName],
+    ['Requested date', data.date],
+    ['Requested time', data.time],
+    ['Suggested date', data.suggestedDate],
+    ['Suggested time', data.suggestedTime],
+    ['Barber', data.barberName || 'Lycan'],
+    ['Status', 'RESCHEDULE REQUESTED'],
+  ])
+);
+
+export const bookingSuggestionResponseTemplate = (data: AppointmentEmailData & {
+  response: 'accepted' | 'rejected';
+  suggestedDate: string;
+  suggestedTime: string;
+}): string => layout(
+  data.response === 'accepted' ? 'Alternative time accepted' : 'Alternative time declined',
+  data.response === 'accepted'
+    ? `Hi ${escapeHtml(data.customerName)}, your alternative appointment time has been accepted and confirmed.`
+    : `Hi ${escapeHtml(data.customerName)}, we’ve recorded that you declined the suggested appointment time. Our salon team will review your request.`,
+  details([
+    ['Booking reference', data.bookingRef],
+    ['Service', data.serviceName],
+    ['Suggested date', data.suggestedDate],
+    ['Suggested time', data.suggestedTime],
+    ['Response', data.response.toUpperCase()],
+  ])
+);
+
+export const bookingSuggestionResponseAdminTemplate = (data: AppointmentEmailData & {
+  response: 'accepted' | 'rejected';
+  suggestedDate: string;
+  suggestedTime: string;
+}): string => layout(
+  'Customer response to alternative time',
+  `${escapeHtml(data.customerName)} ${data.response === 'accepted' ? 'accepted' : 'declined'} the suggested appointment time.`,
+  details([
+    ['Booking reference', data.bookingRef],
+    ['Service', data.serviceName],
+    ['Suggested date', data.suggestedDate],
+    ['Suggested time', data.suggestedTime],
+    ['Customer response', data.response.toUpperCase()],
+  ])
 );
 
 export const bookingRejectionTemplate = (data: AppointmentEmailData): string => layout(
@@ -61,10 +122,19 @@ export const appointmentReminderTemplate = (data: AppointmentEmailData & { remin
   details([['Booking reference', data.bookingRef], ['Service', data.serviceName], ['Date', data.date], ['Time', data.time]])
 );
 
-export const newAppointmentAdminTemplate = (data: AppointmentEmailData): string => layout(
+export const newAppointmentAdminTemplate = (data: AppointmentEmailData & { customerEmail?: string; customerPhone?: string }): string => layout(
   'New appointment request',
   'A new appointment request was submitted and requires review.',
-  details([['Booking reference', data.bookingRef], ['Customer', data.customerName], ['Service', data.serviceName], ['Date', data.date], ['Time', data.time]])
+  details([
+    ['Booking reference', data.bookingRef],
+    ['Customer', data.customerName],
+    ['Customer email', data.customerEmail || '-'],
+    ['Customer phone', data.customerPhone || '-'],
+    ['Service', data.serviceName],
+    ['Barber', data.barberName || 'Lycan'],
+    ['Date', data.date],
+    ['Time', data.time],
+  ])
 );
 
 export const verificationTemplate = (customerName: string, verifyUrl: string, otp?: string): string => layout(

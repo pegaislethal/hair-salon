@@ -73,7 +73,7 @@ router.get('/revenue', authenticate, isAdminOrSubAdmin, async (req: AuthRequest,
 router.get('/popular-services', authenticate, isAdminOrSubAdmin, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const popular = await Appointment.aggregate([
-      { $match: { status: { $in: ['completed', 'accepted'] } } },
+      { $match: { status: { $in: ['completed', 'accepted', 'confirmed'] } } },
       { $group: { _id: '$service', count: { $sum: 1 }, revenue: { $sum: '$priceSnapshot' } } },
       { $sort: { count: -1 } },
       { $limit: 10 },

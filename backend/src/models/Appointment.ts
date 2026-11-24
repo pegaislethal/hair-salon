@@ -5,6 +5,15 @@ export interface IAppointment extends Document {
   customer: mongoose.Types.ObjectId;
   service: mongoose.Types.ObjectId;
   staff?: mongoose.Types.ObjectId;
+  requestedBarberName?: string;
+  requestedAppointmentDate?: Date;
+  requestedStartTime?: string;
+  suggestedAppointmentDate?: Date;
+  suggestedStartTime?: string;
+  suggestedEndTime?: string;
+  suggestionResponse?: 'accepted' | 'rejected';
+  suggestedBy?: mongoose.Types.ObjectId;
+  suggestedAt?: Date;
   appointmentDate: Date;
   startTime: string;
   endTime: string;
@@ -12,7 +21,7 @@ export interface IAppointment extends Document {
   priceSnapshot: number;
   reservationId?: string;
   customerNotes?: string;
-  status: 'pending' | 'accepted' | 'rejected' | 'cancelled' | 'completed' | 'no_show';
+  status: 'pending' | 'accepted' | 'confirmed' | 'reschedule_requested' | 'rejected' | 'cancelled' | 'completed' | 'no_show';
   rejectionReason?: string;
   cancellationReason?: string;
   cancelledBy?: mongoose.Types.ObjectId;
@@ -43,6 +52,15 @@ const appointmentSchema = new Schema<IAppointment>({
   customer: { type: Schema.Types.ObjectId, ref: 'User', required: true },
   service: { type: Schema.Types.ObjectId, ref: 'Service', required: true },
   staff: { type: Schema.Types.ObjectId, ref: 'User' },
+  requestedBarberName: { type: String, enum: ['Yujin (Intern)', 'Rohit (Intern)', 'Lycan'] },
+  requestedAppointmentDate: { type: Date },
+  requestedStartTime: { type: String },
+  suggestedAppointmentDate: { type: Date },
+  suggestedStartTime: { type: String },
+  suggestedEndTime: { type: String },
+  suggestionResponse: { type: String, enum: ['accepted', 'rejected'] },
+  suggestedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+  suggestedAt: { type: Date },
   appointmentDate: { type: Date, required: true },
   startTime: { type: String, required: true },
   endTime: { type: String, required: true },
@@ -50,7 +68,7 @@ const appointmentSchema = new Schema<IAppointment>({
   priceSnapshot: { type: Number, required: true },
   reservationId: { type: String },
   customerNotes: { type: String, maxlength: 500 },
-  status: { type: String, enum: ['pending', 'accepted', 'rejected', 'cancelled', 'completed', 'no_show'], default: 'pending' },
+  status: { type: String, enum: ['pending', 'accepted', 'confirmed', 'reschedule_requested', 'rejected', 'cancelled', 'completed', 'no_show'], default: 'pending' },
   rejectionReason: { type: String },
   cancellationReason: { type: String },
   cancelledBy: { type: Schema.Types.ObjectId, ref: 'User' },

@@ -213,7 +213,7 @@ export default function AdminDashboardPage() {
                                 </button>
                               </>
                             )}
-                            {appt.status === 'accepted' && (
+                            {['confirmed', 'accepted'].includes(appt.status) && (
                               <button
                                 onClick={() => handleQuickStatus(appt._id, 'complete')}
                                 className="px-2.5 py-1 rounded bg-zinc-900 text-white text-[11px] font-medium hover:bg-zinc-800"

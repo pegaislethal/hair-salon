@@ -7,7 +7,7 @@ import BookingLock from '../models/BookingLock';
 import { IAppointment } from '../models/Appointment';
 
 const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'] as const;
-const activeStatuses = ['pending', 'accepted'];
+const activeStatuses = ['accepted', 'confirmed'];
 // Barber schedules use Nepal local time, while appointment dates are stored as UTC calendar days.
 const salonUtcOffsetMinutes = 345;
 const isValidTime = (time: string): boolean => /^([01]\d|2[0-3]):[0-5]\d$/.test(time || '');
@@ -122,6 +122,60 @@ export const getAvailableStaffForSlot = async (
   return eligible.filter((staff) => !bookedStaff.has((staff.user as mongoose.Types.ObjectId).toString()));
 };
 
+export const isVirtualBarberAvailableForSlot = async (
+  service: IService,
+  date: string,
+  startTime: string,
+  barberName: string,
+  excludeAppointmentId?: string,
+  excludeReservationId?: string
+): Promise<boolean> => {
+  if (barberName !== 'Lycan' || !isValidTime(startTime)) return false;
+
+  const { start, end } = dateBounds(date);
+  if (!Number.isFinite(start.getTime())) return false;
+
+  const settings = await SalonSettings.findOne();
+  const dateKey = start.toISOString().slice(0, 10);
+  if (settings?.holidays?.some((holiday) => new Date(holiday.date).toISOString().slice(0, 10) === dateKey)) return false;
+
+  const day = settings?.businessHours?.[dayNames[start.getUTCDay()]];
+  if (!day || day.isClosed || !isValidTime(day.open) || !isValidTime(day.close) || timeToMinutes(day.open) >= timeToMinutes(day.close)) return false;
+
+  const startMinutes = timeToMinutes(startTime);
+  const endMinutes = startMinutes + service.duration + (service.bufferDuration || 0);
+  if (startMinutes < timeToMinutes(day.open) || endMinutes > timeToMinutes(day.close)) return false;
+
+  const appointmentTimestamp = start.getTime() + (startMinutes - salonUtcOffsetMinutes) * 60000;
+  const minAdvanceHours = settings.bookingSettings?.minAdvanceHours || 0;
+  const advanceBookingDays = settings.bookingSettings?.advanceBookingDays;
+  if (appointmentTimestamp < Date.now() + minAdvanceHours * 3600000) return false;
+  if (advanceBookingDays !== undefined && appointmentTimestamp > Date.now() + advanceBookingDays * 86400000) return false;
+
+  const [appointments, locks] = await Promise.all([
+    Appointment.find({
+      appointmentDate: { $gte: start, $lt: end },
+      status: { $in: activeStatuses },
+      ...(excludeAppointmentId ? { _id: { $ne: excludeAppointmentId } } : {}),
+    } as any).populate('service', 'bufferDuration'),
+    BookingLock.find({
+      appointmentDate: start,
+      ...(excludeReservationId ? { reservationId: { $ne: excludeReservationId } } : {}),
+      minute: { $gte: startMinutes, $lt: endMinutes },
+    }),
+  ]);
+
+  const candidateEnd = endMinutes;
+  const overlapsAppointment = appointments.some((appointment) => {
+    const existingService = appointment.service as unknown as { bufferDuration?: number };
+    const existingStart = timeToMinutes(appointment.startTime);
+    const existingEnd = timeToMinutes(appointment.endTime) + (existingService?.bufferDuration || 0);
+    return startMinutes < existingEnd && candidateEnd > existingStart;
+  });
+
+  return locks.length === 0 && !overlapsAppointment;
+};
+
 export const getAvailableSlots = async (service: IService, date: string, staffId?: string): Promise<string[]> => {
   const { start } = dateBounds(date);
   if (!Number.isFinite(start.getTime())) return [];
@@ -146,6 +200,23 @@ export const reserveSlot = async (staffUserId: mongoose.Types.ObjectId, date: Da
   const start = timeToMinutes(startTime);
   const locks = Array.from({ length: duration }, (_, index) => ({
     staff: staffUserId,
+    appointmentDate: date,
+    minute: start + index,
+    reservationId,
+  }));
+  await BookingLock.insertMany(locks, { ordered: true });
+};
+
+export const reserveVirtualBarberSlot = async (
+  barberName: string,
+  date: Date,
+  startTime: string,
+  duration: number,
+  reservationId: string
+): Promise<void> => {
+  const start = timeToMinutes(startTime);
+  const locks = Array.from({ length: duration }, (_, index) => ({
+    barberName,
     appointmentDate: date,
     minute: start + index,
     reservationId,

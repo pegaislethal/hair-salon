@@ -40,7 +40,7 @@ export default function CustomerDashboardPage() {
     loadData();
   }, []);
 
-  const upcoming = appointments.filter((a) => ['pending', 'accepted'].includes(a.status));
+  const upcoming = appointments.filter((a) => ['pending', 'reschedule_requested', 'confirmed', 'accepted'].includes(a.status));
   const past = appointments.filter((a) => ['completed', 'cancelled', 'rejected'].includes(a.status));
 
   return (

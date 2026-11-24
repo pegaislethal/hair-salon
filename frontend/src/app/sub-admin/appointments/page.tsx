@@ -90,7 +90,7 @@ export default function SubAdminAppointmentsPage() {
         <div className="space-y-6">
           {/* Status Tabs */}
           <div className="bg-white p-4 rounded-xl border border-zinc-200 shadow-sm flex items-center gap-2 flex-wrap">
-            {['all', 'pending', 'accepted', 'completed', 'cancelled', 'rejected'].map((st) => (
+            {['all', 'pending', 'reschedule_requested', 'confirmed', 'accepted', 'completed', 'cancelled', 'rejected'].map((st) => (
               <button
                 key={st}
                 onClick={() => setStatusFilter(st)}
@@ -186,7 +186,7 @@ export default function SubAdminAppointmentsPage() {
                                 </Button>
                               </>
                             )}
-                            {appt.status === 'accepted' && (
+                            {['confirmed', 'accepted'].includes(appt.status) && (
                               <Button
                                 size="sm"
                                 onClick={() => handleComplete(appt._id)}

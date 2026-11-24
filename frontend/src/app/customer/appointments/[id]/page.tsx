@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { ProtectedRoute } from '../../../../components/ProtectedRoute';
 import { DashboardLayout } from '../../../../layouts/DashboardLayout';
@@ -14,27 +14,31 @@ import { formatDate, formatPrice, formatTime12 } from '../../../../utils/format'
 import {
   Calendar,
   Clock,
-  User,
-  Scissors,
   ArrowLeft,
   AlertCircle,
-  CheckCircle2,
 } from 'lucide-react';
+
+const getErrorMessage = (error: unknown, fallback: string): string => {
+  if (typeof error === 'object' && error !== null && 'response' in error) {
+    const response = (error as { response?: { data?: { message?: unknown } } }).response;
+    if (typeof response?.data?.message === 'string') return response.data.message;
+  }
+  return fallback;
+};
 
 export default function CustomerAppointmentDetailsPage() {
   const params = useParams();
-  const router = useRouter();
   const id = params.id as string;
 
   const [appointment, setAppointment] = useState<Appointment | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Reschedule state
+  const [responseLoading, setResponseLoading] = useState(false);
+  const [responseError, setResponseError] = useState<string | null>(null);
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
   const [rescheduleDate, setRescheduleDate] = useState('');
-  const [rescheduleSlot, setRescheduleSlot] = useState('');
-  const [rescheduleSlots, setRescheduleSlots] = useState<string[]>([]);
+  const [rescheduleTime, setRescheduleTime] = useState('');
   const [rescheduling, setRescheduling] = useState(false);
   const [rescheduleError, setRescheduleError] = useState<string | null>(null);
 
@@ -47,8 +51,8 @@ export default function CustomerAppointmentDetailsPage() {
       } else {
         setError('Appointment not found.');
       }
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to retrieve appointment details.');
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to retrieve appointment details.'));
     } finally {
       setLoading(false);
     }
@@ -58,45 +62,37 @@ export default function CustomerAppointmentDetailsPage() {
     fetchAppointment();
   }, [id]);
 
-  // Load available slots when reschedule date changes
-  useEffect(() => {
-    if (!rescheduleDate || !appointment) return;
-    async function fetchSlots() {
-      try {
-        const res = await appointmentService.getAvailableSlots(
-          appointment?.service?._id,
-          rescheduleDate,
-          appointment?.staff?._id
-        );
-        if (res.success && res.data) {
-          setRescheduleSlots(res.data);
-          if (res.data.length > 0) setRescheduleSlot(res.data[0]);
-        }
-      } catch {
-        setRescheduleSlots(['10:00', '11:00', '12:00', '14:00', '15:00', '16:00']);
+  const handleSuggestionResponse = async (response: 'accepted' | 'rejected') => {
+    setResponseLoading(true);
+    setResponseError(null);
+    try {
+      const res = await appointmentService.respondToSuggestedTime(id, response);
+      if (res.success) {
+        await fetchAppointment();
       }
+    } catch (err) {
+      setResponseError(getErrorMessage(err, 'Could not submit your response.'));
+    } finally {
+      setResponseLoading(false);
     }
-    fetchSlots();
-  }, [rescheduleDate, appointment]);
+  };
 
   const handleRescheduleSubmit = async () => {
-    if (!rescheduleDate || !rescheduleSlot) {
-      setRescheduleError('Please choose a date and time slot.');
+    if (!rescheduleDate || !rescheduleTime) {
+      setRescheduleError('Choose a date and preferred time.');
       return;
     }
     setRescheduling(true);
     setRescheduleError(null);
     try {
-      const res = await appointmentService.rescheduleAppointment(id, {
+      await appointmentService.rescheduleAppointment(id, {
         appointmentDate: rescheduleDate,
-        startTime: rescheduleSlot,
+        startTime: rescheduleTime,
       });
-      if (res.success) {
-        setRescheduleOpen(false);
-        fetchAppointment();
-      }
-    } catch (err: any) {
-      setRescheduleError(err.response?.data?.message || 'Reschedule failed.');
+      setRescheduleOpen(false);
+      await fetchAppointment();
+    } catch (err) {
+      setRescheduleError(getErrorMessage(err, 'Could not request the reschedule.'));
     } finally {
       setRescheduling(false);
     }
@@ -142,22 +138,67 @@ export default function CustomerAppointmentDetailsPage() {
                   Created on {formatDate(appointment.createdAt)}
                 </p>
               </div>
-
-              {['pending', 'accepted'].includes(appointment.status) && (
-                <div className="flex items-center gap-3">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setRescheduleDate(new Date(appointment.appointmentDate).toISOString().split('T')[0]);
-                      setRescheduleOpen(true);
-                    }}
-                  >
-                    Reschedule Date / Time
-                  </Button>
-                </div>
+              {['pending', 'confirmed', 'accepted'].includes(appointment.status) && !appointment.requestedBarberName && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setRescheduleDate(new Date(appointment.appointmentDate).toISOString().slice(0, 10));
+                    setRescheduleTime(appointment.startTime);
+                    setRescheduleError(null);
+                    setRescheduleOpen(true);
+                  }}
+                >
+                  Request Reschedule
+                </Button>
               )}
             </div>
+
+            {appointment.suggestedAppointmentDate && appointment.suggestedStartTime && (
+              <div className="bg-champagne-50 p-6 rounded-xl border border-champagne-200 space-y-4">
+                <div>
+                  <h3 className="font-serif font-bold text-zinc-900">Alternative Time Suggested</h3>
+                  <p className="text-xs text-zinc-600 mt-1">
+                    {appointment.status === 'reschedule_requested'
+                      ? 'Your requested time is unavailable. Please accept this alternative or decline it so our team can follow up.'
+                      : appointment.suggestionResponse === 'accepted' && ['confirmed', 'accepted'].includes(appointment.status)
+                        ? 'You accepted this alternative time and your appointment is confirmed.'
+                        : appointment.suggestionResponse === 'rejected'
+                          ? 'You declined this alternative time. Our salon team will follow up.'
+                          : 'This alternative time is no longer waiting for a response.'}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-6 text-sm">
+                  <span><strong>Date:</strong> {formatDate(appointment.suggestedAppointmentDate)}</span>
+                  <span><strong>Time:</strong> {formatTime12(appointment.suggestedStartTime)}</span>
+                </div>
+                {responseError && (
+                  <div className="p-3 bg-rose-50 border border-rose-200 text-xs text-rose-700 rounded">
+                    {responseError}
+                  </div>
+                )}
+                {appointment.status === 'reschedule_requested' && (
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      size="sm"
+                      isLoading={responseLoading}
+                      disabled={responseLoading}
+                      onClick={() => handleSuggestionResponse('accepted')}
+                    >
+                      Accept Suggested Time
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={responseLoading}
+                      onClick={() => handleSuggestionResponse('rejected')}
+                    >
+                      Decline Suggestion
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Details Breakdown */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -175,15 +216,29 @@ export default function CustomerAppointmentDetailsPage() {
                     <span className="font-semibold text-zinc-900">{appointment.duration} minutes</span>
                   </div>
                   <div className="flex justify-between py-1">
-                    <span className="text-zinc-500">Date</span>
-                    <span className="font-semibold text-zinc-900">{formatDate(appointment.appointmentDate)}</span>
-                  </div>
-                  <div className="flex justify-between py-1">
-                    <span className="text-zinc-500">Time Window</span>
+                    <span className="text-zinc-500">Requested Date</span>
                     <span className="font-semibold text-zinc-900">
-                      {formatTime12(appointment.startTime)} – {formatTime12(appointment.endTime)}
+                      {formatDate(appointment.requestedAppointmentDate || appointment.appointmentDate)}
                     </span>
                   </div>
+                  <div className="flex justify-between py-1">
+                    <span className="text-zinc-500">Requested Time</span>
+                    <span className="font-semibold text-zinc-900">
+                      {formatTime12(appointment.requestedStartTime || appointment.startTime)}
+                    </span>
+                  </div>
+                  {['confirmed', 'accepted'].includes(appointment.status) && (
+                    <>
+                      <div className="flex justify-between py-1">
+                        <span className="text-zinc-500">Confirmed Date</span>
+                        <span className="font-semibold text-zinc-900">{formatDate(appointment.appointmentDate)}</span>
+                      </div>
+                      <div className="flex justify-between py-1">
+                        <span className="text-zinc-500">Confirmed Time</span>
+                        <span className="font-semibold text-zinc-900">{formatTime12(appointment.startTime)}</span>
+                      </div>
+                    </>
+                  )}
                   <div className="flex justify-between py-1 border-t border-zinc-100 pt-3">
                     <span className="text-zinc-500 font-medium">Price Snapshot</span>
                     <span className="font-bold text-zinc-900 text-sm">{formatPrice(appointment.priceSnapshot)}</span>
@@ -199,7 +254,7 @@ export default function CustomerAppointmentDetailsPage() {
                   <div className="flex justify-between py-1">
                     <span className="text-zinc-500">Assigned Stylist</span>
                     <span className="font-semibold text-zinc-900">
-                      {appointment.staff?.fullName || 'Senior Stylist Assigned by Iris'}
+                      {appointment.requestedBarberName || appointment.staff?.fullName || '—'}
                     </span>
                   </div>
                   <div className="py-1">
@@ -224,59 +279,47 @@ export default function CustomerAppointmentDetailsPage() {
           </div>
         )}
 
-        {/* Reschedule Modal */}
         <Modal
           isOpen={rescheduleOpen}
           onClose={() => setRescheduleOpen(false)}
-          title="Reschedule Appointment"
+          title="Request a Reschedule"
         >
           <div className="space-y-4">
+            <p className="text-xs text-zinc-600">
+              Choose a date and time. The salon team will check availability and review your request.
+            </p>
             {rescheduleError && (
               <div className="p-3 bg-rose-50 border border-rose-200 text-xs text-rose-700 rounded">
                 {rescheduleError}
               </div>
             )}
-            <div className="space-y-1.5">
-              <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-700">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <label className="space-y-1.5 text-xs font-semibold text-zinc-700">
                 New Date
+                <input
+                  type="date"
+                  min={new Date().toISOString().slice(0, 10)}
+                  value={rescheduleDate}
+                  onChange={(event) => setRescheduleDate(event.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-zinc-200 rounded-md"
+                />
               </label>
-              <input
-                type="date"
-                min={new Date().toISOString().split('T')[0]}
-                value={rescheduleDate}
-                onChange={(e) => setRescheduleDate(e.target.value)}
-                className="w-full px-3 py-2 text-xs border border-zinc-200 rounded-md focus:outline-none focus:ring-1 focus:ring-zinc-900"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-700">
-                New Time Slot
+              <label className="space-y-1.5 text-xs font-semibold text-zinc-700">
+                Preferred Appointment Time
+                <input
+                  type="time"
+                  value={rescheduleTime}
+                  onChange={(event) => setRescheduleTime(event.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-zinc-200 rounded-md"
+                />
               </label>
-              <div className="grid grid-cols-3 gap-2">
-                {rescheduleSlots.map((slot) => (
-                  <button
-                    key={slot}
-                    type="button"
-                    onClick={() => setRescheduleSlot(slot)}
-                    className={`py-1.5 px-2 text-xs rounded border ${
-                      rescheduleSlot === slot
-                        ? 'bg-zinc-900 text-white border-zinc-900'
-                        : 'bg-white text-zinc-700 border-zinc-200'
-                    }`}
-                  >
-                    {formatTime12(slot)}
-                  </button>
-                ))}
-              </div>
             </div>
-
             <div className="flex justify-end gap-2 pt-3 border-t border-zinc-100">
               <Button variant="outline" size="sm" onClick={() => setRescheduleOpen(false)}>
                 Cancel
               </Button>
               <Button size="sm" isLoading={rescheduling} onClick={handleRescheduleSubmit}>
-                Confirm Reschedule
+                Send Reschedule Request
               </Button>
             </div>
           </div>
