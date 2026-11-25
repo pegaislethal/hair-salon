@@ -116,6 +116,23 @@ iris-hair-salon/
 - Set the frontend's `NEXT_PUBLIC_API_URL` to the backend's public URL ending in `/api` (locally this is `http://localhost:5000/api`). This is a frontend build-time variable.
 - Registration stores the account and verification credentials before attempting email delivery. If delivery fails, the registration response says so and offers resend. The verification link requires an explicit confirmation click (rather than verifying on page load); the six-digit email code is also supported. Resending is limited to five requests per IP every 15 minutes and one delivery per account per minute. The resend endpoint uses a generic response to avoid confirming whether an email is registered.
 
+### Render Deployment
+
+The Express backend and Next.js frontend are separate services. For the backend Render Web Service, use:
+
+| Setting | Value |
+| --- | --- |
+| Root Directory | `backend` |
+| Build Command | `npm ci --include=dev && npm run build` |
+| Start Command | `npm start` |
+| Health Check Path | `/api/health` |
+
+Do not use `npm run dev`, `nodemon`, or `ts-node` as the Render Start Command. Those run the development server and can exhaust the small Node heap; the production `npm start` runs the compiled `dist/app.js`. Set `NODE_ENV=production` and the backend environment variables in Render. Do not set `NODE_OPTIONS` to a heap size larger than the service's available memory. If the compiled production process still runs out of memory, increase the Render instance memory.
+
+Deploy the Next.js app separately (the repository's `vercel.json` configures Vercel for the frontend and backend). Set the frontend build-time variable `NEXT_PUBLIC_API_URL` to the backend's public URL ending in `/api` when calling Render directly. A Render backend alone does not serve the Next.js `/services` page.
+
+After deploying the backend, check Render logs for both `Iris Salon API listening` and `[DB] MongoDB connected`. Then check `https://<backend-host>/api/health` returns HTTP 200 and `https://<backend-host>/api/services` returns a JSON array with active services. If the API returns an empty array, the production MongoDB database has no active service records; seed the intended database once with `npm run seed` from the backend service shell. If the frontend page itself loads but the browser shows an API error, check the frontend's `NEXT_PUBLIC_API_URL` and browser Network tab. Service-catalog database errors are logged with a `[SERVICES]` prefix without returning internal details to visitors.
+
 ### Nepal Phone Validation & Optional Verification
 
 - Signup and customer profile accept 10-digit Nepal mobile numbers beginning with `98` or `97`, with optional `+977`, spaces, or hyphens. Phone numbers are stored as E.164 (`+97798XXXXXXXX`).
