@@ -1,4 +1,4 @@
-import { Resend } from 'resend';
+import nodemailer, { type Transporter } from 'nodemailer';
 import EmailDelivery from '../models/EmailDelivery';
 
 export interface SendEmailOptions {
@@ -19,42 +19,80 @@ export interface SendEmailResult {
 }
 
 const safeErrorMessage = (error: unknown): string => {
-  if (error instanceof Error) return error.message;
-  if (typeof error === 'object' && error !== null && 'message' in error) {
-    return String((error as { message: unknown }).message);
-  }
-  return 'Resend delivery failed';
+  const rawMessage = error instanceof Error
+    ? error.message
+    : typeof error === 'object' && error !== null && 'message' in error
+      ? String((error as { message: unknown }).message)
+      : 'Gmail SMTP delivery failed';
+  const credentials = [
+    process.env.EMAIL_USER?.trim(),
+    process.env.EMAIL_APP_PASSWORD?.replace(/\s/g, ''),
+  ].filter((value): value is string => Boolean(value));
+  const redactedMessage = credentials.reduce(
+    (message, credential) => message.split(credential).join('[redacted]'),
+    rawMessage
+  );
+  return redactedMessage
+    .replace(/(password|pass|auth(?:entication)?)\s*[:=]\s*[^,\s]+/gi, '$1=[redacted]')
+    .slice(0, 500);
 };
+
+let smtpTransporter: Transporter | undefined;
+
+const getSmtpTransporter = (user: string, appPassword: string): Transporter => {
+  if (!smtpTransporter) {
+    smtpTransporter = nodemailer.createTransport({
+      host: 'smtp.gmail.com',
+      port: 465,
+      secure: true,
+      auth: { user, pass: appPassword },
+    });
+  }
+  return smtpTransporter;
+};
+
+const htmlToText = (html: string): string => html
+  .replace(/<style[\s\S]*?<\/style>/gi, '')
+  .replace(/<script[\s\S]*?<\/script>/gi, '')
+  .replace(/<\/td\s*>/gi, '\t')
+  .replace(/<\/(p|div|tr|h[1-6])\s*>/gi, '\n')
+  .replace(/<br\s*\/?>/gi, '\n')
+  .replace(/<[^>]+>/g, '')
+  .replace(/&nbsp;/gi, ' ')
+  .replace(/&amp;/gi, '&')
+  .replace(/&lt;/gi, '<')
+  .replace(/&gt;/gi, '>')
+  .replace(/&quot;/gi, '"')
+  .replace(/&#0?39;/gi, "'")
+  .replace(/[ \t]+\n/g, '\n')
+  .replace(/\n{3,}/g, '\n\n')
+  .trim();
 
 export const sendEmail = async (options: SendEmailOptions): Promise<SendEmailResult> => {
   const originalRecipient = options.to.trim();
-  const testRecipient = (process.env.EMAIL_TEST_RECIPIENT || process.env.ADMIN_EMAIL || '').trim();
-  const testMode = (process.env.RESEND_TEST_MODE || 'true').trim().toLowerCase() !== 'false';
-  const recipient = testMode && testRecipient ? testRecipient : originalRecipient;
-  const apiKey = process.env.RESEND_API_KEY?.trim();
+  const recipient = originalRecipient;
+  const user = process.env.EMAIL_USER?.trim();
+  const appPassword = process.env.EMAIL_APP_PASSWORD?.replace(/\s/g, '');
   const from = process.env.EMAIL_FROM?.trim();
 
-  if (!apiKey) {
-    return recordFailure(options, 'RESEND_API_KEY is not configured.', recipient);
+  if (!user) {
+    return recordFailure(options, 'EMAIL_USER is not configured.', recipient);
+  }
+  if (!appPassword || appPassword.length !== 16) {
+    return recordFailure(options, 'EMAIL_APP_PASSWORD must be a 16-character Gmail app password.', recipient);
   }
   if (!from) {
-    return recordFailure(options, 'EMAIL_FROM must be configured with a sender on a verified Resend domain.', recipient);
+    return recordFailure(options, 'EMAIL_FROM is not configured.', recipient);
   }
   if (!recipient) {
-    return recordFailure(options, 'No verified email recipient is configured.', recipient);
-  }
-  if (from.toLowerCase().includes('onboarding@resend.dev')) {
-    console.warn('[EMAIL] Resend onboarding sender is configured; delivery is limited to eligible test recipients.');
+    return recordFailure(options, 'No email recipient is configured.', recipient);
   }
 
   if (options.deduplicationKey) {
     try {
       const existing = await EmailDelivery.findOne({ deduplicationKey: options.deduplicationKey });
       if (existing?.status === 'sent') {
-        console.info('[EMAIL] Skipped duplicate email already sent', {
-          providerMessageId: existing.providerMessageId,
-          type: options.type || 'general',
-        });
+        console.info('[EMAIL] Skipped duplicate email already sent', { messageId: existing.providerMessageId });
         return { success: true, deliveryId: existing._id.toString(), providerMessageId: existing.providerMessageId, skippedDuplicate: true };
       }
     } catch (error) {
@@ -79,17 +117,16 @@ export const sendEmail = async (options: SendEmailOptions): Promise<SendEmailRes
   }
 
   try {
-    const resend = new Resend(apiKey);
-    const result = await resend.emails.send({
+    const result = await getSmtpTransporter(user, appPassword).sendMail({
       from,
-      to: [recipient],
+      to: recipient,
       subject: options.subject,
       html: options.html,
-      text: options.text,
+      text: options.text || htmlToText(options.html),
     });
 
-    if (result.error) {
-      const message = safeErrorMessage(result.error);
+    if (result.rejected.length > 0 || result.accepted.length === 0) {
+      const message = 'Gmail SMTP did not accept the message recipient.';
       if (delivery) {
         delivery.status = 'failed';
         delivery.error = message;
@@ -99,13 +136,18 @@ export const sendEmail = async (options: SendEmailOptions): Promise<SendEmailRes
           console.error('[EMAIL] Failed to save email delivery status', { error: safeErrorMessage(saveError) });
         }
       }
-      console.error('[EMAIL] Resend delivery failed', { subject: options.subject, type: options.type || 'general', error: message });
+      console.error('[EMAIL] Gmail SMTP delivery failed', {
+        subject: options.subject,
+        type: options.type || 'general',
+        responseCode: result.responseCode,
+        error: message,
+      });
       return { success: false, deliveryId: delivery?._id.toString(), error: message };
     }
 
-    const providerMessageId = result.data?.id;
+    const providerMessageId = result.messageId;
     if (!providerMessageId) {
-      const message = 'Resend did not return a message ID.';
+      const message = 'Gmail SMTP did not return a message ID.';
       if (delivery) {
         delivery.status = 'failed';
         delivery.error = message;
@@ -115,7 +157,7 @@ export const sendEmail = async (options: SendEmailOptions): Promise<SendEmailRes
           console.error('[EMAIL] Failed to save email delivery status', { error: safeErrorMessage(saveError) });
         }
       }
-      console.error('[EMAIL] Resend delivery failed', { subject: options.subject, type: options.type || 'general', error: message });
+      console.error('[EMAIL] Gmail SMTP delivery failed', { subject: options.subject, type: options.type || 'general', error: message });
       return { success: false, deliveryId: delivery?._id.toString(), error: message };
     }
 
@@ -129,8 +171,8 @@ export const sendEmail = async (options: SendEmailOptions): Promise<SendEmailRes
         console.error('[EMAIL] Failed to save email delivery status', { error: safeErrorMessage(saveError) });
       }
     }
-    console.info('[EMAIL] Resend accepted message', {
-      providerMessageId,
+    console.info('[EMAIL] Gmail SMTP accepted message', {
+      messageId: providerMessageId,
       type: options.type || 'general',
       deliveryId: delivery?._id.toString(),
     });
@@ -146,7 +188,7 @@ export const sendEmail = async (options: SendEmailOptions): Promise<SendEmailRes
         console.error('[EMAIL] Failed to save email delivery status', { error: safeErrorMessage(saveError) });
       }
     }
-    console.error('[EMAIL] Resend delivery failed', { subject: options.subject, type: options.type || 'general', error: message });
+    console.error('[EMAIL] Gmail SMTP delivery failed', { subject: options.subject, type: options.type || 'general', error: message });
     return { success: false, deliveryId: delivery?._id.toString(), error: message };
   }
 };

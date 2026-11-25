@@ -102,13 +102,14 @@ iris-hair-salon/
    ```
    *The frontend will be running at `http://localhost:3000`.*
 
-### Email Verification & Render Configuration
+### Email Verification & Gmail SMTP Configuration
 
-- For local email testing, set `RESEND_API_KEY` in `backend/.env`. The example sender `onboarding@resend.dev` is restricted to testing with the email address associated with your Resend account. `RESEND_TEST_MODE=true` redirects messages to `EMAIL_TEST_RECIPIENT` (or `ADMIN_EMAIL`).
-- For live email, verify your sending domain in Resend and set `EMAIL_FROM` to an address on that domain, such as `Iris Salon <noreply@your-verified-domain.com>`. On Render, set `NODE_ENV=production`, `RESEND_API_KEY`, `EMAIL_FROM`, `RESEND_TEST_MODE=false`, and `FRONTEND_URL` to the public HTTPS origin of the deployed Next.js app. Render does not read your local `.env`.
+- Enable 2-Step Verification on the Gmail account, then create a Google App Password for mail. Use the generated 16-character password, not the normal Gmail password. If Google Workspace does not offer App Passwords, the account administrator must allow them or provide another SMTP account.
+- Set `EMAIL_USER` to the Gmail account, `EMAIL_APP_PASSWORD` to its App Password, `EMAIL_FROM` to the same Gmail address (or a send-as alias configured in Gmail), and `ADMIN_EMAIL` to the salon administrator's address in `backend/.env`. The backend accepts app passwords pasted with spaces and removes those spaces before connecting.
+- These values are server-only. Add them to the backend service's environment in Render, not to the frontend or any `NEXT_PUBLIC_` variable. Also set `NODE_ENV=production` and `FRONTEND_URL` to the deployed Next.js app's public HTTPS origin. Render does not read your local `.env`.
+- The shared backend email service uses Gmail SMTP over TLS, keeps the existing branded HTML templates, and generates a plain-text alternative. Successful sends log a Gmail SMTP message ID; failures log a sanitized SMTP error without logging credentials or message contents. Check Render logs for `[EMAIL] Gmail SMTP accepted message` or `[EMAIL] Gmail SMTP delivery failed`.
 - Set the frontend's `NEXT_PUBLIC_API_URL` to the backend's public URL ending in `/api` (locally this is `http://localhost:5000/api`). This is a frontend build-time variable.
-- Registration stores the account and verification credentials before attempting email delivery. If delivery fails, the registration response says so and offers resend. The verification link requires an explicit confirmation click (rather than verifying on page load); the six-digit email code is also supported. Resending is limited to five requests per IP every 15 minutes and one delivery per account per minute. Resend uses a generic response to avoid confirming whether an email is registered.
-- After testing, check Render logs for `[EMAIL] Resend accepted message` and its `providerMessageId`, or `[EMAIL] Resend delivery failed` with the provider error. A Resend message ID means Resend accepted the request; check the message's status in the Resend Emails dashboard to confirm delivery, bounce, or rejection.
+- Registration stores the account and verification credentials before attempting email delivery. If delivery fails, the registration response says so and offers resend. The verification link requires an explicit confirmation click (rather than verifying on page load); the six-digit email code is also supported. Resending is limited to five requests per IP every 15 minutes and one delivery per account per minute. The resend endpoint uses a generic response to avoid confirming whether an email is registered.
 
 ---
 

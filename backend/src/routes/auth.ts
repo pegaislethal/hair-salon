@@ -103,13 +103,9 @@ router.post('/register', [
       password,
     });
     const emailResult = await sendVerificationEmail(user);
-    const emailRoutedToTestRecipient = emailResult.success
-      && (process.env.RESEND_TEST_MODE || 'true').trim().toLowerCase() !== 'false'
-      && Boolean((process.env.EMAIL_TEST_RECIPIENT || process.env.ADMIN_EMAIL)?.trim());
     res.status(201).json({
       success: true,
       emailSent: emailResult.success,
-      emailRoutedToTestRecipient,
       message: emailResult.success
         ? 'Registration successful. Please check your email to verify your account.'
         : 'Your account was created, but we could not send the verification email. Use the resend option to try again.',
