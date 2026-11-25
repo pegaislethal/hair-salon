@@ -36,6 +36,11 @@ iris-hair-salon/
 │   ├── next.config.ts
 │   └── tsconfig.json
 │
+├── shared/
+│   ├── nepalPhone.js
+│   ├── nepalPhone.d.ts
+│   └── nepalPhone.test.js
+│
 ├── README.md
 └── .gitignore
 ```
@@ -110,6 +115,13 @@ iris-hair-salon/
 - The shared backend email service uses Gmail SMTP over TLS, keeps the existing branded HTML templates, and generates a plain-text alternative. Successful sends log a Gmail SMTP message ID; failures log a sanitized SMTP error without logging credentials or message contents. Check Render logs for `[EMAIL] Gmail SMTP accepted message` or `[EMAIL] Gmail SMTP delivery failed`.
 - Set the frontend's `NEXT_PUBLIC_API_URL` to the backend's public URL ending in `/api` (locally this is `http://localhost:5000/api`). This is a frontend build-time variable.
 - Registration stores the account and verification credentials before attempting email delivery. If delivery fails, the registration response says so and offers resend. The verification link requires an explicit confirmation click (rather than verifying on page load); the six-digit email code is also supported. Resending is limited to five requests per IP every 15 minutes and one delivery per account per minute. The resend endpoint uses a generic response to avoid confirming whether an email is registered.
+
+### Nepal Phone Validation & Optional Verification
+
+- Signup and customer profile accept 10-digit Nepal mobile numbers beginning with `98` or `97`, with optional `+977`, spaces, or hyphens. Phone numbers are stored as E.164 (`+97798XXXXXXXX`).
+- Phone verification is optional and available from the customer profile; bookings require a valid phone number but do not require verification. Verification uses the existing `SMS_PROVIDER`, `SMS_API_KEY`, and `SMS_SENDER_ID` backend settings. Codes expire after 10 minutes, are stored as keyed hashes, and are protected by request and attempt limits.
+- Run the shared normalization tests with `node --test shared/nepalPhone.test.js`.
+- To confirm invalid values are blocked before network traffic, open browser DevTools → Network, enter an invalid signup/profile number (for example `9612345678`), and try to submit or request a code. The relevant `/api/auth/register`, `/api/auth/profile`, or `/api/auth/phone/request-verification` request must not appear. For booking, use an account with an invalid stored phone; the request button should be disabled and `/api/appointments` should not be sent.
 
 ---
 

@@ -3,7 +3,7 @@ import axios from 'axios';
 export const sendSMS = async (phone: string, message: string): Promise<boolean> => {
   const provider = process.env.SMS_PROVIDER;
   if (!provider || !process.env.SMS_API_KEY) {
-    console.log('[SMS DEV MODE] Would send to:', phone, '| Message:', message);
+    console.log('[SMS DEV MODE] SMS not sent. Configure SMS_PROVIDER and SMS_API_KEY to enable delivery.');
     return false;
   }
   try {
@@ -28,7 +28,11 @@ export const sendSMS = async (phone: string, message: string): Promise<boolean> 
     console.warn('[SMS] Unknown provider:', provider);
     return false;
   } catch (error) {
-    console.error('[SMS] Send failed:', error);
+    if (axios.isAxiosError(error)) {
+      console.error('[SMS] Send failed', { code: error.code, status: error.response?.status });
+    } else {
+      console.error('[SMS] Send failed', { error: 'Unexpected SMS provider error.' });
+    }
     return false;
   }
 };

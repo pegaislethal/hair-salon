@@ -5,6 +5,12 @@ export interface IUser extends Document {
   fullName: string;
   email: string;
   phone: string;
+  isPhoneVerified: boolean;
+  phoneVerifiedAt?: Date;
+  phoneVerificationOTPHash?: string;
+  phoneVerificationOTPExpiry?: Date;
+  phoneVerificationOTPAttempts: number;
+  phoneVerificationSentAt?: Date;
   password: string;
   profileImage?: string;
   role: 'super_admin' | 'sub_admin' | 'customer';
@@ -29,6 +35,12 @@ const userSchema = new Schema<IUser>({
   fullName: { type: String, required: true, trim: true, maxlength: 100 },
   email: { type: String, required: true, unique: true, lowercase: true, trim: true },
   phone: { type: String, required: true, trim: true },
+  isPhoneVerified: { type: Boolean, default: false },
+  phoneVerifiedAt: { type: Date },
+  phoneVerificationOTPHash: { type: String, select: false },
+  phoneVerificationOTPExpiry: { type: Date, select: false },
+  phoneVerificationOTPAttempts: { type: Number, default: 0, select: false },
+  phoneVerificationSentAt: { type: Date, select: false },
   password: { type: String, required: true, minlength: 6 },
   profileImage: { type: String },
   role: { type: String, enum: ['super_admin', 'sub_admin', 'customer'], default: 'customer' },
@@ -71,6 +83,10 @@ userSchema.set('toJSON', {
     delete ret.passwordResetExpiry;
     delete ret.passwordResetOTP;
     delete ret.passwordResetOTPExpiry;
+    delete ret.phoneVerificationOTPHash;
+    delete ret.phoneVerificationOTPExpiry;
+    delete ret.phoneVerificationOTPAttempts;
+    delete ret.phoneVerificationSentAt;
     return ret;
   },
 });

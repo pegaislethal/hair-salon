@@ -7,6 +7,7 @@ import Notification from '../models/Notification';
 import { authenticate, isAdminOrSubAdmin } from '../middleware/auth';
 import { AuthRequest } from '../types';
 import { generateBookingReference } from '../utils/generateToken';
+import { normalizeNepalPhone } from '../utils/nepalPhone';
 import { sendEmail } from '../config/email';
 import {
   bookingPendingTemplate,
@@ -44,6 +45,24 @@ router.post('/', authenticate, [
   if (!errors.isEmpty()) { res.status(400).json({ success: false, errors: errors.array() }); return; }
   try {
     const { serviceId, appointmentDate, startTime, barberName, customerNotes } = req.body;
+    const customer = await User.findById(req.user!.id);
+    if (!customer) {
+      res.status(404).json({ success: false, message: 'Customer not found.' });
+      return;
+    }
+    const phoneValidation = normalizeNepalPhone(customer.phone);
+    if (!phoneValidation.valid) {
+      res.status(400).json({
+        success: false,
+        message: 'Update your profile with a valid Nepal mobile number before booking.',
+      });
+      return;
+    }
+    if (customer.phone !== phoneValidation.normalized) {
+      customer.phone = phoneValidation.normalized;
+      await customer.save({ validateBeforeSave: false });
+    }
+
     const service = await Service.findById(serviceId);
     if (!service || !service.isActive) { res.status(404).json({ success: false, message: 'Service not found.' }); return; }
     const { start } = dateBounds(appointmentDate);
@@ -71,7 +90,6 @@ router.post('/', authenticate, [
     });
     // Notify customer after the appointment is persisted
     await Notification.create({ recipient: req.user!.id, type: 'booking_created', title: 'Booking Request Sent', message: `Your appointment (${bookingReference}) is pending confirmation.`, appointment: appointment._id });
-    const customer = await User.findById(req.user!.id);
     if (customer?.email) {
       await sendEmail({
         to: customer.email,

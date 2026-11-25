@@ -38,6 +38,16 @@ export const authService = {
     return res.data;
   },
 
+  async requestPhoneVerification() {
+    const res = await api.post<{ success: boolean; message: string }>('/auth/phone/request-verification');
+    return res.data;
+  },
+
+  async verifyPhoneCode(otp: string) {
+    const res = await api.post<{ success: boolean; message: string; data: User }>('/auth/phone/verify', { otp });
+    return res.data;
+  },
+
   async changePassword(data: { currentPassword: string; newPassword: string }) {
     const res = await api.put<{ success: boolean; message: string }>('/auth/change-password', data);
     return res.data;

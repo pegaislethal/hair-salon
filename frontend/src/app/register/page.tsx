@@ -7,6 +7,7 @@ import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import { ResendVerificationForm } from '../../components/ResendVerificationForm';
 import { authService } from '../../services/authService';
+import { getNepalPhoneInputValue, normalizeNepalPhone } from '../../utils/nepalPhone';
 import { Sparkles, AlertCircle, CheckCircle2 } from 'lucide-react';
 
 export default function RegisterPage() {
@@ -19,15 +20,32 @@ export default function RegisterPage() {
   const [emailSent, setEmailSent] = useState(false);
   const [canResend, setCanResend] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [phoneError, setPhoneError] = useState<string | null>(null);
+  const [phoneTouched, setPhoneTouched] = useState(false);
+
+  const phoneValidation = normalizeNepalPhone(phone);
+
+  const handlePhoneChange = (value: string) => {
+    const nextPhone = getNepalPhoneInputValue(value);
+    setPhone(nextPhone);
+    if (phoneTouched) setPhoneError(normalizeNepalPhone(nextPhone).error);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setCanResend(false);
+    const validatedPhone = normalizeNepalPhone(phone);
+    if (!validatedPhone.valid) {
+      setPhoneTouched(true);
+      setPhoneError(validatedPhone.error);
+      setError(validatedPhone.error);
+      return;
+    }
     setLoading(true);
 
     try {
-      const res = await authService.register({ fullName, email, phone, password });
+      const res = await authService.register({ fullName, email, phone: validatedPhone.normalized, password });
       if (res.success) {
         setSuccess(true);
         setEmailSent(res.emailSent === true);
@@ -97,13 +115,40 @@ export default function RegisterPage() {
                   placeholder="jane@example.com"
                   required
                 />
-                <Input
-                  label="Phone Number"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="+977-9800000000"
-                  required
-                />
+                <div className="space-y-1.5">
+                  <label htmlFor="register-phone" className="block text-xs font-semibold uppercase tracking-wider text-zinc-700">
+                    Phone Number
+                  </label>
+                  <div className={`flex rounded-md border bg-white focus-within:ring-1 focus-within:ring-zinc-900 ${phoneError ? 'border-rose-400 focus-within:ring-rose-500' : 'border-zinc-200'}`}>
+                    <span className="inline-flex items-center border-r border-zinc-200 bg-zinc-50 px-3.5 text-sm font-medium text-zinc-600">
+                      +977
+                    </span>
+                    <input
+                      id="register-phone"
+                      type="tel"
+                      inputMode="tel"
+                      autoComplete="tel-national"
+                      value={phone}
+                      onChange={(e) => handlePhoneChange(e.target.value)}
+                      onBlur={() => {
+                        setPhoneTouched(true);
+                        setPhoneError(normalizeNepalPhone(phone).error);
+                      }}
+                      placeholder="98XXXXXXXX"
+                      aria-invalid={Boolean(phoneError)}
+                      aria-describedby="register-phone-help"
+                      required
+                      className="min-w-0 flex-1 rounded-r-md px-3.5 py-2.5 text-sm text-zinc-900 outline-none placeholder:text-zinc-400"
+                    />
+                  </div>
+                  {phoneError ? (
+                    <p id="register-phone-help" role="alert" className="text-xs font-medium text-rose-500">{phoneError}</p>
+                  ) : (
+                    <p id="register-phone-help" className="text-xs text-zinc-500">
+                      Enter 10 digits starting with 98 or 97.
+                    </p>
+                  )}
+                </div>
                 <Input
                   label="Password"
                   type="password"
@@ -114,7 +159,7 @@ export default function RegisterPage() {
                   minLength={6}
                 />
 
-                <Button type="submit" isLoading={loading} className="w-full">
+                <Button type="submit" isLoading={loading} disabled={!phoneValidation.valid} className="w-full">
                   Create Iris Account
                 </Button>
               </form>

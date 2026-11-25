@@ -1,16 +1,21 @@
 import { Router, Request, Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import rateLimit from 'express-rate-limit';
+import { createHmac, timingSafeEqual } from 'crypto';
 import User, { type IUser } from '../models/User';
 import { generateAccessToken, generateRefreshToken, generateSecureToken, generateOTP } from '../utils/generateToken';
 import { authenticate } from '../middleware/auth';
 import { AuthRequest } from '../types';
 import { sendEmail, type SendEmailResult } from '../config/email';
+import { sendSMS } from '../config/sms';
+import { normalizeNepalPhone } from '../utils/nepalPhone';
 import jwt from 'jsonwebtoken';
 import { verificationTemplate, verificationTextTemplate, passwordResetTemplate } from '../utils/emailTemplates';
 
 const router = Router();
 const verificationResendCooldownMs = 60 * 1000;
+const phoneVerificationCooldownMs = 60 * 1000;
+const phoneVerificationExpiryMs = 10 * 60 * 1000;
 const resendVerificationLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 5,
@@ -18,7 +23,27 @@ const resendVerificationLimiter = rateLimit({
   legacyHeaders: false,
   message: { success: false, message: 'Too many verification requests. Please try again later.' },
 });
+const phoneVerificationRequestLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many phone verification requests. Please try again later.' },
+});
+const phoneVerificationAttemptLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many verification attempts. Please try again later.' },
+});
 const resendVerificationMessage = 'If an active account with that email needs verification, it can receive a new email if the resend cooldown has passed. Check your inbox and spam folder.';
+
+const hashPhoneVerificationOTP = (otp: string): string => {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) throw new Error('JWT_SECRET must be configured for phone verification.');
+  return createHmac('sha256', secret).update(otp).digest('hex');
+};
 
 const getFrontendBaseUrl = (): string | null => {
   const configuredUrl = process.env.FRONTEND_URL?.trim();
@@ -81,7 +106,7 @@ const createSession = (userId: string, role: string, res: Response) => {
 router.post('/register', [
   body('fullName').trim().notEmpty().withMessage('Full name is required'),
   body('email').isEmail().withMessage('Valid email is required'),
-  body('phone').trim().notEmpty().withMessage('Phone number is required'),
+  body('phone').isString().withMessage('Phone number is required'),
   body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
 ], async (req: Request, res: Response): Promise<void> => {
   const errors = validationResult(req);
@@ -89,8 +114,13 @@ router.post('/register', [
     res.status(400).json({ success: false, errors: errors.array() });
     return;
   }
+  const phoneValidation = normalizeNepalPhone(req.body.phone);
+  if (!phoneValidation.valid) {
+    res.status(400).json({ success: false, message: phoneValidation.error });
+    return;
+  }
   try {
-    const { fullName, email, phone, password } = req.body;
+    const { fullName, email, password } = req.body;
     const existing = await User.findOne({ email: email.toLowerCase() });
     if (existing) {
       res.status(409).json({ success: false, message: 'Email already registered.' });
@@ -99,7 +129,7 @@ router.post('/register', [
     const user = await User.create({
       fullName,
       email,
-      phone,
+      phone: phoneValidation.normalized,
       password,
     });
     const emailResult = await sendVerificationEmail(user);
@@ -212,15 +242,38 @@ router.get('/me', authenticate, async (req: AuthRequest, res: Response): Promise
 
 // @route   PUT /api/auth/profile
 router.put('/profile', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
+  const phoneProvided = req.body && Object.prototype.hasOwnProperty.call(req.body, 'phone');
+  const phoneValidation =
+    phoneProvided && req.user!.role === 'customer' ? normalizeNepalPhone(req.body.phone) : null;
+  if (phoneValidation && !phoneValidation.valid) {
+    res.status(400).json({ success: false, message: phoneValidation.error });
+    return;
+  }
+
   try {
     const { fullName, phone, profileImage } = req.body;
-    const user = await User.findById(req.user!.id);
+    const user = await User.findById(req.user!.id).select(
+      '+phoneVerificationOTPHash +phoneVerificationOTPExpiry +phoneVerificationOTPAttempts +phoneVerificationSentAt'
+    );
     if (!user) {
       res.status(404).json({ success: false, message: 'User not found.' });
       return;
     }
     if (fullName) user.fullName = fullName.trim();
-    if (phone) user.phone = phone.trim();
+    if (phoneValidation?.valid) {
+      const currentPhone = normalizeNepalPhone(user.phone);
+      const phoneChanged = !currentPhone.valid || currentPhone.normalized !== phoneValidation.normalized;
+      user.phone = phoneValidation.normalized;
+      if (phoneChanged) {
+        user.isPhoneVerified = false;
+        user.phoneVerifiedAt = undefined;
+        user.phoneVerificationOTPHash = undefined;
+        user.phoneVerificationOTPExpiry = undefined;
+        user.phoneVerificationOTPAttempts = 0;
+      }
+    } else if (phoneProvided && typeof phone === 'string') {
+      user.phone = phone.trim();
+    }
     if (profileImage !== undefined) user.profileImage = profileImage;
     await user.save({ validateBeforeSave: false });
     res.json({ success: true, message: 'Profile updated successfully.', data: user });
@@ -228,6 +281,193 @@ router.put('/profile', authenticate, async (req: AuthRequest, res: Response): Pr
     res.status(500).json({ success: false, message: 'Server error updating profile.' });
   }
 });
+
+router.post(
+  '/phone/request-verification',
+  authenticate,
+  phoneVerificationRequestLimiter,
+  async (req: AuthRequest, res: Response): Promise<void> => {
+    if (req.user!.role !== 'customer') {
+      res.status(403).json({ success: false, message: 'Only customers can verify a phone number.' });
+      return;
+    }
+
+    try {
+      const user = await User.findById(req.user!.id);
+      if (!user || !user.isActive) {
+        res.status(404).json({ success: false, message: 'User not found.' });
+        return;
+      }
+      if (user.isPhoneVerified) {
+        res.json({ success: true, message: 'This phone number is already verified.' });
+        return;
+      }
+
+      const phoneValidation = normalizeNepalPhone(user.phone);
+      if (!phoneValidation.valid) {
+        res.status(400).json({ success: false, message: 'Update your profile with a valid Nepal mobile number first.' });
+        return;
+      }
+
+      const now = new Date();
+      const otp = generateOTP();
+      const otpHash = hashPhoneVerificationOTP(otp);
+      const eligibleUser = await User.findOneAndUpdate(
+        {
+          _id: user._id,
+          phone: user.phone,
+          role: 'customer',
+          isActive: true,
+          isPhoneVerified: { $ne: true },
+          $or: [
+            { phoneVerificationSentAt: { $exists: false } },
+            { phoneVerificationSentAt: { $lte: new Date(now.getTime() - phoneVerificationCooldownMs) } },
+          ],
+        },
+        {
+          $set: {
+            phone: phoneValidation.normalized,
+            phoneVerificationOTPHash: otpHash,
+            phoneVerificationOTPExpiry: new Date(now.getTime() + phoneVerificationExpiryMs),
+            phoneVerificationOTPAttempts: 0,
+            phoneVerificationSentAt: now,
+          },
+        },
+        { new: true }
+      );
+      if (!eligibleUser) {
+        const latestUser = await User.findById(user._id).select('isPhoneVerified phone');
+        if (latestUser?.isPhoneVerified) {
+          res.json({ success: true, message: 'This phone number is already verified.' });
+          return;
+        }
+        if (latestUser && latestUser.phone !== user.phone) {
+          res.status(409).json({ success: false, message: 'Your phone number changed. Refresh your profile and try again.' });
+          return;
+        }
+        res.status(429).json({ success: false, message: 'Please wait before requesting another verification code.' });
+        return;
+      }
+
+      const smsSent = await sendSMS(
+        phoneValidation.normalized,
+        `Your Iris Salon phone verification code is ${otp}. It expires in 10 minutes.`
+      );
+      if (!smsSent) {
+        await User.updateOne(
+          { _id: user._id, phoneVerificationOTPHash: otpHash },
+          {
+            $unset: { phoneVerificationOTPHash: 1, phoneVerificationOTPExpiry: 1 },
+            $set: { phoneVerificationOTPAttempts: 0 },
+          }
+        );
+        res.status(503).json({
+          success: false,
+          message: 'We could not send the verification SMS. Please try again later.',
+        });
+        return;
+      }
+
+      res.json({ success: true, message: 'A verification code was sent to your phone.' });
+    } catch (error) {
+      console.error('[AUTH] Phone verification SMS request failed', {
+        code: (error as { code?: string }).code,
+      });
+      res.status(500).json({ success: false, message: 'Could not process phone verification. Please try again later.' });
+    }
+  }
+);
+
+router.post(
+  '/phone/verify',
+  authenticate,
+  phoneVerificationAttemptLimiter,
+  [body('otp').isString().matches(/^\d{6}$/).withMessage('Enter the six-digit verification code.')],
+  async (req: AuthRequest, res: Response): Promise<void> => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      res.status(400).json({ success: false, message: 'Enter the six-digit verification code.' });
+      return;
+    }
+    if (req.user!.role !== 'customer') {
+      res.status(403).json({ success: false, message: 'Only customers can verify a phone number.' });
+      return;
+    }
+
+    try {
+      const user = await User.findById(req.user!.id).select(
+        '+phoneVerificationOTPHash +phoneVerificationOTPExpiry +phoneVerificationOTPAttempts'
+      );
+      if (!user || !user.isActive) {
+        res.status(404).json({ success: false, message: 'User not found.' });
+        return;
+      }
+      if (user.isPhoneVerified) {
+        res.json({ success: true, message: 'This phone number is already verified.', data: user });
+        return;
+      }
+      if (user.phoneVerificationOTPAttempts >= 5) {
+        res.status(429).json({ success: false, message: 'Too many incorrect codes. Request a new code later.' });
+        return;
+      }
+
+      const storedHash = user.phoneVerificationOTPHash;
+      const expiry = user.phoneVerificationOTPExpiry;
+      if (!storedHash || !expiry || expiry <= new Date()) {
+        res.status(400).json({ success: false, message: 'The verification code is invalid or expired.' });
+        return;
+      }
+
+      const expectedHash = Buffer.from(hashPhoneVerificationOTP(req.body.otp), 'hex');
+      const actualHash = Buffer.from(storedHash, 'hex');
+      if (expectedHash.length !== actualHash.length || !timingSafeEqual(expectedHash, actualHash)) {
+        await User.updateOne(
+          {
+            _id: user._id,
+            phoneVerificationOTPHash: storedHash,
+            phoneVerificationOTPExpiry: { $gt: new Date() },
+            phoneVerificationOTPAttempts: { $lt: 5 },
+          },
+          { $inc: { phoneVerificationOTPAttempts: 1 } }
+        );
+        res.status(400).json({ success: false, message: 'The verification code is invalid or expired.' });
+        return;
+      }
+
+      const now = new Date();
+      const verifiedUser = await User.findOneAndUpdate(
+        {
+          _id: user._id,
+          isActive: true,
+          isPhoneVerified: { $ne: true },
+          phoneVerificationOTPAttempts: { $lt: 5 },
+          phoneVerificationOTPHash: storedHash,
+          phoneVerificationOTPExpiry: { $gt: now },
+        },
+        {
+          $set: { isPhoneVerified: true, phoneVerifiedAt: now },
+          $unset: {
+            phoneVerificationOTPHash: 1,
+            phoneVerificationOTPExpiry: 1,
+            phoneVerificationOTPAttempts: 1,
+            phoneVerificationSentAt: 1,
+          },
+        },
+        { new: true }
+      );
+      if (!verifiedUser) {
+        res.status(400).json({ success: false, message: 'The verification code is invalid or expired.' });
+        return;
+      }
+      res.json({ success: true, message: 'Phone number verified successfully.', data: verifiedUser });
+    } catch (error) {
+      console.error('[AUTH] Phone verification failed', {
+        code: (error as { code?: string }).code,
+      });
+      res.status(500).json({ success: false, message: 'Could not verify this phone number. Please try again later.' });
+    }
+  }
+);
 
 // @route   PUT /api/auth/change-password
 router.put('/change-password', authenticate, [

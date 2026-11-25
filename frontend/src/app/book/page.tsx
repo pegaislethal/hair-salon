@@ -8,6 +8,9 @@ import { Appointment, Service } from '../../types';
 import { serviceService } from '../../services/serviceService';
 import { appointmentService } from '../../services/appointmentService';
 import { useAuth } from '../../context/AuthContext';
+import { getBookingLoginUrl, showBookingLoginToast } from '../../utils/bookingAuth';
+import { authService } from '../../services/authService';
+import { getNepalPhoneInputValue, normalizeNepalPhone } from '../../utils/nepalPhone';
 import {
   BookingDraft,
   BookingStep,
@@ -102,7 +105,7 @@ function BookingWizard() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const preselectedService = searchParams.get('service');
-  const { isAuthenticated, loading: authLoading } = useAuth();
+  const { user, isAuthenticated, loading: authLoading, updateUser } = useAuth();
 
   const [step, setStep] = useState<BookingStep>(1);
   const [services, setServices] = useState<Service[]>([]);
@@ -119,6 +122,14 @@ function BookingWizard() {
   const [bookingSuccess, setBookingSuccess] = useState<Appointment | null>(null);
   const [restoredDraft, setRestoredDraft] = useState<BookingDraft | null>(null);
   const [draftReady, setDraftReady] = useState(false);
+  const [bookingPhone, setBookingPhone] = useState(getNepalPhoneInputValue(user?.phone || ''));
+  const [bookingPhoneError, setBookingPhoneError] = useState<string | null>(null);
+  const [bookingPhoneTouched, setBookingPhoneTouched] = useState(false);
+  const bookingPhoneValidation = normalizeNepalPhone(bookingPhone);
+
+  useEffect(() => {
+    if (user?.phone) setBookingPhone(getNepalPhoneInputValue(user.phone));
+  }, [user?.phone]);
 
   // Restore a saved booking before loading the service catalog.
   useEffect(() => {
@@ -175,7 +186,8 @@ function BookingWizard() {
             notes: restoredDraft?.notes || '',
             step: restoredDraft?.step ?? 2,
           });
-          router.replace('/login');
+          showBookingLoginToast();
+          router.replace(getBookingLoginUrl(`/book?service=${encodeURIComponent(found._id)}`));
         }
       } catch (err) {
         if (!cancelled) {
@@ -224,7 +236,8 @@ function BookingWizard() {
       notes,
       step: nextStep,
     });
-    router.push('/login');
+    showBookingLoginToast();
+    router.push(getBookingLoginUrl(`/book?service=${encodeURIComponent(selectedService._id)}`));
   };
 
   const handleContinue = (nextStep: BookingStep) => {
@@ -248,10 +261,30 @@ function BookingWizard() {
       return;
     }
 
+    if (!bookingPhoneValidation.valid) {
+      setBookingPhoneTouched(true);
+      setBookingPhoneError(bookingPhoneValidation.error);
+      setError('Enter a valid Nepal mobile number before booking.');
+      return;
+    }
+
     setSubmitting(true);
     setError(null);
 
     try {
+      if (!user) {
+        setError('Please sign in again before submitting your booking.');
+        return;
+      }
+      if (user.phone !== bookingPhoneValidation.normalized) {
+        const profile = await authService.updateProfile({ phone: bookingPhoneValidation.normalized });
+        if (!profile.success || !profile.data) {
+          setError(profile.message || 'Could not save your phone number.');
+          return;
+        }
+        updateUser(profile.data);
+      }
+
       const res = await appointmentService.createAppointment({
         serviceId: selectedService._id,
         appointmentDate: selectedDate,
@@ -669,6 +702,52 @@ function BookingWizard() {
                   </div>
                 </div>
 
+                {isAuthenticated && (
+                  <div className="space-y-1.5">
+                    <label htmlFor="booking-phone" className="block text-xs font-semibold uppercase tracking-wider text-zinc-700">
+                      Phone Number
+                    </label>
+                    <div className={`flex rounded-md border bg-white focus-within:ring-1 focus-within:ring-zinc-900 ${bookingPhoneError ? 'border-rose-400 focus-within:ring-rose-500' : 'border-zinc-200'}`}>
+                      <span className="inline-flex items-center border-r border-zinc-200 bg-zinc-50 px-3.5 text-sm font-medium text-zinc-600">
+                        +977
+                      </span>
+                      <input
+                        id="booking-phone"
+                        type="tel"
+                        inputMode="tel"
+                        autoComplete="tel-national"
+                        value={bookingPhone}
+                        onChange={(event) => {
+                          const nextPhone = getNepalPhoneInputValue(event.target.value);
+                          setBookingPhone(nextPhone);
+                          setError(null);
+                          if (bookingPhoneTouched) {
+                            setBookingPhoneError(normalizeNepalPhone(nextPhone).error);
+                          }
+                        }}
+                        onBlur={() => {
+                          setBookingPhoneTouched(true);
+                          setBookingPhoneError(normalizeNepalPhone(bookingPhone).error);
+                        }}
+                        placeholder="98XXXXXXXX"
+                        aria-invalid={Boolean(bookingPhoneError)}
+                        aria-describedby="booking-phone-help"
+                        required
+                        className="min-w-0 flex-1 rounded-r-md px-3.5 py-2.5 text-sm text-zinc-900 outline-none placeholder:text-zinc-400"
+                      />
+                    </div>
+                    {bookingPhoneError ? (
+                      <p id="booking-phone-help" role="alert" className="text-xs font-medium text-rose-500">
+                        {bookingPhoneError}
+                      </p>
+                    ) : (
+                      <p id="booking-phone-help" className="text-xs text-zinc-500">
+                        Enter 10 digits starting with 98 or 97. This will update your profile contact number.
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 {/* Customer Notes */}
                 <div className="space-y-2">
                   <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-700">
@@ -696,7 +775,12 @@ function BookingWizard() {
                   <Button variant="outline" onClick={() => setStep(2)}>
                     Back
                   </Button>
-                  <Button isLoading={submitting} onClick={handleBookingSubmit} className="gap-2 px-8">
+                  <Button
+                    isLoading={submitting}
+                    disabled={isAuthenticated && !bookingPhoneValidation.valid}
+                    onClick={handleBookingSubmit}
+                    className="gap-2 px-8"
+                  >
                     {isAuthenticated ? 'Request Appointment' : 'Sign In & Request'}
                   </Button>
                 </div>

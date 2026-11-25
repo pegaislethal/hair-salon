@@ -6,6 +6,8 @@ export interface User {
   role: 'super_admin' | 'sub_admin' | 'customer';
   profileImage?: string;
   isEmailVerified: boolean;
+  isPhoneVerified: boolean;
+  phoneVerifiedAt?: string;
   isActive: boolean;
   lastLogin?: string;
   createdAt: string;

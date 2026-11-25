@@ -2,13 +2,18 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { PublicLayout } from '../../layouts/PublicLayout';
 import { Service } from '../../types';
 import { serviceService } from '../../services/serviceService';
 import { formatPrice } from '../../utils/format';
+import { useAuth } from '../../context/AuthContext';
+import { getBookingLoginUrl, showBookingLoginToast } from '../../utils/bookingAuth';
 import { Clock, ArrowRight, Sparkles } from 'lucide-react';
 
 export default function ServicesPage() {
+  const router = useRouter();
+  const { isAuthenticated, loading: authLoading } = useAuth();
   const [services, setServices] = useState<Service[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [loading, setLoading] = useState<boolean>(true);
@@ -37,6 +42,23 @@ export default function ServicesPage() {
     selectedCategory === 'all'
       ? services
       : services.filter((s) => (s.category || 'General') === selectedCategory);
+
+  const handleBookNow = (event: React.MouseEvent<HTMLAnchorElement>, serviceId: string) => {
+    if (
+      authLoading ||
+      isAuthenticated ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey ||
+      event.button !== 0
+    ) {
+      return;
+    }
+    event.preventDefault();
+    showBookingLoginToast();
+    router.push(getBookingLoginUrl(`/book?service=${encodeURIComponent(serviceId)}`));
+  };
 
   return (
     <PublicLayout>
@@ -119,6 +141,7 @@ export default function ServicesPage() {
                     </div>
                     <Link
                       href={`/book?service=${service._id}`}
+                      onClick={(event) => handleBookNow(event, service._id)}
                       className="inline-flex items-center gap-1.5 text-xs font-semibold px-4 py-2 rounded-md bg-champagne-100 text-champagne-900 hover:bg-champagne-200 border border-champagne-300 transition-colors"
                     >
                       Book Now <ArrowRight className="w-3.5 h-3.5" />

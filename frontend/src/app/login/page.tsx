@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { PublicLayout } from '../../layouts/PublicLayout';
@@ -10,16 +10,38 @@ import { ResendVerificationForm } from '../../components/ResendVerificationForm'
 import { authService } from '../../services/authService';
 import { useAuth } from '../../context/AuthContext';
 import { readBookingDraft } from '../../utils/bookingDraft';
+import { showBookingLoginToast } from '../../utils/bookingAuth';
 import { Sparkles, AlertCircle, ArrowRight } from 'lucide-react';
+
+const getSafeRedirectPath = (requestedRedirect: string | null): string | null => {
+  if (!requestedRedirect) return null;
+  try {
+    const target = new URL(requestedRedirect, window.location.origin);
+    if (target.origin !== window.location.origin) return null;
+    return `${target.pathname}${target.search}${target.hash}`;
+  } catch {
+    return null;
+  }
+};
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login } = useAuth();
+  const { login, isAuthenticated, loading: authLoading } = useAuth();
+  const authToastHandled = useRef(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [canResendVerification, setCanResendVerification] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (authLoading || authToastHandled.current) return;
+    authToastHandled.current = true;
+    if (isAuthenticated) return;
+
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('reason') === 'auth_required') showBookingLoginToast();
+  }, [authLoading, isAuthenticated]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,6 +53,12 @@ export default function LoginPage() {
       const res = await authService.login({ email, password });
       if (res.success && res.data) {
         login(res.data.accessToken, res.data.refreshToken, res.data.user);
+        const requestedRedirect = new URLSearchParams(window.location.search).get('redirect');
+        const safeRedirectPath = getSafeRedirectPath(requestedRedirect);
+        if (safeRedirectPath) {
+          router.replace(safeRedirectPath);
+          return;
+        }
         if (res.data.user.role === 'super_admin') {
           router.replace('/admin/dashboard');
         } else if (res.data.user.role === 'sub_admin') {

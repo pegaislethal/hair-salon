@@ -1,12 +1,13 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ProtectedRoute } from '../../../components/ProtectedRoute';
 import { DashboardLayout } from '../../../layouts/DashboardLayout';
 import { useAuth } from '../../../context/AuthContext';
 import { authService } from '../../../services/authService';
 import { Input } from '../../../components/ui/Input';
 import { Button } from '../../../components/ui/Button';
+import { getNepalPhoneInputValue, normalizeNepalPhone } from '../../../utils/nepalPhone';
 import { User, CheckCircle2, AlertCircle, Shield } from 'lucide-react';
 
 export default function CustomerProfilePage() {
@@ -14,10 +15,41 @@ export default function CustomerProfilePage() {
 
   // Profile info state
   const [fullName, setFullName] = useState(user?.fullName || '');
-  const [phone, setPhone] = useState(user?.phone || '');
+  const [phone, setPhone] = useState(getNepalPhoneInputValue(user?.phone || ''));
   const [profileSuccess, setProfileSuccess] = useState(false);
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
+  const [phoneError, setPhoneError] = useState<string | null>(null);
+  const [phoneTouched, setPhoneTouched] = useState(false);
+  const [phoneVerificationLoading, setPhoneVerificationLoading] = useState(false);
+  const [phoneCodeSent, setPhoneCodeSent] = useState(false);
+  const [phoneCode, setPhoneCode] = useState('');
+  const [phoneCodeError, setPhoneCodeError] = useState<string | null>(null);
+  const [phoneVerificationMessage, setPhoneVerificationMessage] = useState<string | null>(null);
+  const [phoneVerificationError, setPhoneVerificationError] = useState<string | null>(null);
+
+  const phoneValidation = normalizeNepalPhone(phone);
+  const savedPhoneValidation = normalizeNepalPhone(user?.phone || '');
+  const phoneMatchesSavedValue =
+    phoneValidation.valid &&
+    savedPhoneValidation.valid &&
+    phoneValidation.normalized === savedPhoneValidation.normalized;
+  const phoneVerified = Boolean(user?.isPhoneVerified && phoneMatchesSavedValue);
+
+  useEffect(() => {
+    if (user?.fullName) setFullName(user.fullName);
+    if (user?.phone) setPhone(getNepalPhoneInputValue(user.phone));
+  }, [user?.fullName, user?.phone]);
+
+  const handlePhoneChange = (value: string) => {
+    const nextPhone = getNepalPhoneInputValue(value);
+    setPhone(nextPhone);
+    setPhoneCodeSent(false);
+    setPhoneCode('');
+    setPhoneVerificationMessage(null);
+    setPhoneVerificationError(null);
+    if (phoneTouched) setPhoneError(normalizeNepalPhone(nextPhone).error);
+  };
 
   // Password state
   const [currentPassword, setCurrentPassword] = useState('');
@@ -31,18 +63,90 @@ export default function CustomerProfilePage() {
     e.preventDefault();
     setProfileError(null);
     setProfileSuccess(false);
+    const validatedPhone = normalizeNepalPhone(phone);
+    if (!validatedPhone.valid) {
+      setPhoneTouched(true);
+      setPhoneError(validatedPhone.error);
+      return;
+    }
     setProfileLoading(true);
 
     try {
-      const res = await authService.updateProfile({ fullName, phone });
+      const res = await authService.updateProfile({ fullName, phone: validatedPhone.normalized });
       if (res.success && res.data) {
         updateUser(res.data);
         setProfileSuccess(true);
+        setPhoneError(null);
+      } else {
+        setProfileError(res.message || 'Failed to update profile.');
       }
     } catch (err: any) {
       setProfileError(err.response?.data?.message || 'Failed to update profile.');
     } finally {
       setProfileLoading(false);
+    }
+  };
+
+  const handleRequestPhoneVerification = async () => {
+    setPhoneVerificationError(null);
+    setPhoneVerificationMessage(null);
+    const validatedPhone = normalizeNepalPhone(phone);
+    if (!validatedPhone.valid) {
+      setPhoneTouched(true);
+      setPhoneError(validatedPhone.error);
+      return;
+    }
+
+    setPhoneVerificationLoading(true);
+    try {
+      if (!user) throw new Error('Please sign in again before verifying your phone.');
+      if (user.phone !== validatedPhone.normalized || fullName.trim() !== user.fullName) {
+        const profile = await authService.updateProfile({
+          fullName: fullName.trim(),
+          phone: validatedPhone.normalized,
+        });
+        if (!profile.success || !profile.data) {
+          throw new Error(profile.message || 'Could not save your phone number.');
+        }
+        updateUser(profile.data);
+      }
+
+      const response = await authService.requestPhoneVerification();
+      setPhoneCodeSent(true);
+      setPhoneVerificationMessage(response.message);
+    } catch (err: any) {
+      setPhoneVerificationError(
+        err.response?.data?.message || err.message || 'Could not send a verification code. Please try again.'
+      );
+    } finally {
+      setPhoneVerificationLoading(false);
+    }
+  };
+
+  const handleVerifyPhone = async () => {
+    setPhoneCodeError(null);
+    if (!/^\d{6}$/.test(phoneCode)) {
+      setPhoneCodeError('Enter the six-digit verification code.');
+      return;
+    }
+
+    setPhoneVerificationLoading(true);
+    try {
+      const response = await authService.verifyPhoneCode(phoneCode);
+      if (!response.success || !response.data) {
+        setPhoneCodeError(response.message || 'That verification code is invalid or expired.');
+        return;
+      }
+      updateUser(response.data);
+      setPhoneCodeSent(false);
+      setPhoneCode('');
+      setPhoneVerificationMessage('Your phone number is verified.');
+    } catch (err: any) {
+      setPhoneCodeError(
+        err.response?.data?.message || 'That verification code is invalid or expired.'
+      );
+    } finally {
+      setPhoneVerificationLoading(false);
     }
   };
 
@@ -122,18 +226,124 @@ export default function CustomerProfilePage() {
                 <p className="text-[11px] text-zinc-400">Email cannot be modified directly.</p>
               </div>
 
-              <Input
-                label="Phone Number"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="+977-98..."
-                required
-              />
+              <div className="space-y-1.5">
+                <label htmlFor="profile-phone" className="block text-xs font-semibold uppercase tracking-wider text-zinc-700">
+                  Phone Number
+                </label>
+                <div className={`flex rounded-md border bg-white focus-within:ring-1 focus-within:ring-zinc-900 ${phoneError ? 'border-rose-400 focus-within:ring-rose-500' : 'border-zinc-200'}`}>
+                  <span className="inline-flex items-center border-r border-zinc-200 bg-zinc-50 px-3.5 text-sm font-medium text-zinc-600">
+                    +977
+                  </span>
+                  <input
+                    id="profile-phone"
+                    type="tel"
+                    inputMode="tel"
+                    autoComplete="tel-national"
+                    value={phone}
+                    onChange={(e) => handlePhoneChange(e.target.value)}
+                    onBlur={() => {
+                      setPhoneTouched(true);
+                      setPhoneError(normalizeNepalPhone(phone).error);
+                    }}
+                    placeholder="98XXXXXXXX"
+                    aria-invalid={Boolean(phoneError)}
+                    aria-describedby="profile-phone-help"
+                    required
+                    className="min-w-0 flex-1 rounded-r-md px-3.5 py-2.5 text-sm text-zinc-900 outline-none placeholder:text-zinc-400"
+                  />
+                </div>
+                {phoneError ? (
+                  <p id="profile-phone-help" role="alert" className="text-xs font-medium text-rose-500">{phoneError}</p>
+                ) : (
+                  <p id="profile-phone-help" className="text-xs text-zinc-500">
+                    Enter 10 digits starting with 98 or 97.
+                  </p>
+                )}
+              </div>
 
-              <Button type="submit" isLoading={profileLoading} className="w-full sm:w-auto">
+              <Button
+                type="submit"
+                isLoading={profileLoading}
+                disabled={!phoneValidation.valid}
+                className="w-full sm:w-auto"
+              >
                 Save Profile Changes
               </Button>
             </form>
+
+            <div className="space-y-3 border-t border-zinc-100 pt-4">
+              {phoneVerified ? (
+                <p className="flex items-center gap-2 text-xs font-medium text-emerald-700" role="status">
+                  <CheckCircle2 className="h-4 w-4" /> Phone number verified.
+                </p>
+              ) : (
+                <>
+                  <p className="text-xs text-zinc-500">
+                    Phone verification is optional. We will send a one-time code by SMS.
+                  </p>
+                  {!phoneCodeSent ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      isLoading={phoneVerificationLoading}
+                      disabled={!phoneValidation.valid}
+                      onClick={handleRequestPhoneVerification}
+                    >
+                      Send Verification Code
+                    </Button>
+                  ) : (
+                    <div className="space-y-3">
+                      <Input
+                        label="Six-digit SMS code"
+                        type="text"
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        value={phoneCode}
+                        onChange={(event) => {
+                          const nextCode = event.target.value;
+                          setPhoneCode(nextCode);
+                          if (phoneCodeError) {
+                            setPhoneCodeError(/^\d{6}$/.test(nextCode) ? null : 'Enter the six-digit verification code.');
+                          }
+                        }}
+                        onBlur={() => {
+                          if (phoneCode && !/^\d{6}$/.test(phoneCode)) {
+                            setPhoneCodeError('Enter the six-digit verification code.');
+                          }
+                        }}
+                        error={phoneCodeError || undefined}
+                        placeholder="123456"
+                      />
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          isLoading={phoneVerificationLoading}
+                          disabled={!/^\d{6}$/.test(phoneCode)}
+                          onClick={handleVerifyPhone}
+                        >
+                          Verify Phone
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          isLoading={phoneVerificationLoading}
+                          disabled={!phoneValidation.valid}
+                          onClick={handleRequestPhoneVerification}
+                        >
+                          Resend Code
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                  {phoneVerificationMessage && (
+                    <p className="text-xs text-emerald-700" role="status">{phoneVerificationMessage}</p>
+                  )}
+                  {phoneVerificationError && (
+                    <p className="text-xs text-rose-600" role="alert">{phoneVerificationError}</p>
+                  )}
+                </>
+              )}
+            </div>
           </div>
 
           {/* Change Password */}
