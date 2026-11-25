@@ -1,9 +1,20 @@
 import api from './api';
 import { User } from '../types';
 
+interface VerificationResponse {
+  success: boolean;
+  message: string;
+  data?: { user: User; accessToken: string; refreshToken: string };
+}
+
 export const authService = {
   async register(data: { fullName: string; email: string; phone: string; password: string }) {
     const res = await api.post('/auth/register', data);
+    return res.data;
+  },
+
+  async resendVerificationEmail(email: string) {
+    const res = await api.post<{ success: boolean; message: string }>('/auth/resend-verification', { email });
     return res.data;
   },
 
@@ -43,11 +54,12 @@ export const authService = {
   },
 
   async verifyEmail(token: string) {
-    const res = await api.post<{
-      success: boolean;
-      message: string;
-      data: { user: User; accessToken: string; refreshToken: string };
-    }>('/auth/verify-email', { token });
+    const res = await api.post<VerificationResponse>('/auth/verify-email', { token });
+    return res.data;
+  },
+
+  async verifyEmailWithCode(email: string, otp: string) {
+    const res = await api.post<VerificationResponse>('/auth/verify-email', { email, otp });
     return res.data;
   },
 };

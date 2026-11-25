@@ -1,9 +1,12 @@
 'use client';
 
-import React, { useEffect, useRef, useState, Suspense } from 'react';
+import React, { useEffect, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { PublicLayout } from '../../layouts/PublicLayout';
+import { ResendVerificationForm } from '../../components/ResendVerificationForm';
+import { Button } from '../../components/ui/Button';
+import { Input } from '../../components/ui/Input';
 import { authService } from '../../services/authService';
 import { useAuth } from '../../context/AuthContext';
 import { readBookingDraft } from '../../utils/bookingDraft';
@@ -14,38 +17,52 @@ function VerifyEmailContent() {
   const router = useRouter();
   const { login } = useAuth();
   const token = searchParams.get('token');
-  const verificationStarted = useRef<string | null>(null);
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [email, setEmail] = useState('');
+  const [otp, setOtp] = useState('');
 
   useEffect(() => {
-    async function verify() {
-      if (!token) {
-        setError('Missing verification token.');
-        setLoading(false);
-        return;
-      }
-      if (verificationStarted.current === token) return;
-      verificationStarted.current = token;
-      try {
-        const res = await authService.verifyEmail(token);
-        if (res.success && res.data?.user && res.data.accessToken && res.data.refreshToken) {
-          login(res.data.accessToken, res.data.refreshToken, res.data.user);
-          setSuccess(true);
-          router.replace(readBookingDraft() ? '/book' : '/customer/dashboard');
-        } else {
-          setError(res.message || 'Verification succeeded, but automatic sign in failed. Please sign in.');
-        }
-      } catch (err: any) {
-        setError(err.response?.data?.message || 'Invalid or expired token.');
-      } finally {
-        setLoading(false);
-      }
+    setError(token ? null : 'No verification link was provided. Enter the email and code from your message.');
+  }, [token]);
+
+  const completeVerification = (result: Awaited<ReturnType<typeof authService.verifyEmail>>) => {
+    if (result.success && result.data?.user && result.data.accessToken && result.data.refreshToken) {
+      login(result.data.accessToken, result.data.refreshToken, result.data.user);
+      setSuccess(true);
+      router.replace(readBookingDraft() ? '/book' : '/customer/dashboard');
+      return;
     }
-    verify();
-  }, [token, login, router]);
+    setError(result.message || 'Verification failed. Please try again.');
+  };
+
+  const handleVerifyLink = async () => {
+    if (!token) return;
+    setLoading(true);
+    setError(null);
+    try {
+      completeVerification(await authService.verifyEmail(token));
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Invalid or expired token.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerifyCode = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setLoading(true);
+    setError(null);
+    try {
+      completeVerification(await authService.verifyEmailWithCode(email, otp));
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Invalid or expired verification code.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="w-full max-w-md bg-white p-8 sm:p-10 rounded-2xl border border-zinc-200/80 shadow-xl text-center space-y-6">
@@ -67,8 +84,45 @@ function VerifyEmailContent() {
         </div>
       ) : (
         <div className="space-y-4">
-          <AlertCircle className="w-12 h-12 text-rose-500 mx-auto" />
-          <p className="text-sm text-rose-600">{error || 'Verification failed.'}</p>
+          {error ? (
+            <>
+              <AlertCircle className="w-12 h-12 text-rose-500 mx-auto" />
+              <p className="text-sm text-rose-600">{error}</p>
+            </>
+          ) : (
+            <p className="text-sm text-zinc-600">Confirm below to verify your email and sign in.</p>
+          )}
+          {token && (
+            <Button type="button" onClick={handleVerifyLink} isLoading={loading} className="w-full">
+              Verify email
+            </Button>
+          )}
+          <div className="border-t border-zinc-100 pt-4 text-left">
+            <p className="mb-3 text-xs text-zinc-600">Or enter the six-digit code from your email.</p>
+            <form onSubmit={handleVerifyCode} className="space-y-3">
+              <Input
+                label="Email address"
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                autoComplete="email"
+                required
+              />
+              <Input
+                label="Verification code"
+                value={otp}
+                onChange={(event) => setOtp(event.target.value)}
+                inputMode="numeric"
+                pattern="[0-9]{6}"
+                maxLength={6}
+                required
+              />
+              <Button type="submit" variant="outline" isLoading={loading} className="w-full">
+                Verify with code
+              </Button>
+            </form>
+          </div>
+          {error && <ResendVerificationForm initialEmail={email} />}
           <Link href="/login" className="inline-block text-xs font-semibold text-zinc-900 hover:underline">
             Return to Sign In
           </Link>

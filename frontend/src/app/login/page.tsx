@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { PublicLayout } from '../../layouts/PublicLayout';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
+import { ResendVerificationForm } from '../../components/ResendVerificationForm';
 import { authService } from '../../services/authService';
 import { useAuth } from '../../context/AuthContext';
 import { readBookingDraft } from '../../utils/bookingDraft';
@@ -17,11 +18,13 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [canResendVerification, setCanResendVerification] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setCanResendVerification(false);
     setLoading(true);
 
     try {
@@ -39,7 +42,11 @@ export default function LoginPage() {
         setError('Login failed. Please verify your credentials.');
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Invalid email or password.');
+      const message = err.response?.data?.message || 'Invalid email or password.';
+      setError(message);
+      setCanResendVerification(
+        err.response?.status === 403 && message.toLowerCase().includes('verify your email')
+      );
     } finally {
       setLoading(false);
     }
@@ -63,6 +70,7 @@ export default function LoginPage() {
               <span>{error}</span>
             </div>
           )}
+          {canResendVerification && <ResendVerificationForm initialEmail={email} />}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <Input

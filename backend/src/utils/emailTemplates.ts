@@ -143,6 +143,9 @@ export const verificationTemplate = (customerName: string, verifyUrl: string, ot
   `<table role="presentation" cellspacing="0" cellpadding="0"><tr><td style="border-radius:6px;background:#18181b;"><a href="${escapeHtml(verifyUrl)}" style="display:inline-block;padding:13px 22px;color:#ffffff;text-decoration:none;font-size:14px;font-weight:bold;">Verify email</a></td></tr></table>${otp ? `<p style="margin:18px 0 4px;font-size:13px;color:#71717a;">Your verification OTP:</p><div style="font-size:28px;font-weight:bold;letter-spacing:6px;color:#18181b;">${escapeHtml(otp)}</div>` : ''}<p style="font-size:12px;color:#71717a;line-height:1.5;margin-top:16px;">The link and OTP expire in 24 hours.</p>`
 );
 
+export const verificationTextTemplate = (customerName: string, verifyUrl: string, otp: string): string =>
+  `Hi ${customerName},\n\nVerify your Iris Salon account using this link:\n${verifyUrl}\n\nYour verification code is ${otp}. The link and code expire in 24 hours.`;
+
 export const passwordResetTemplate = (resetUrl: string, customerName: string, otp?: string): string => layout(
   'Password reset request',
   `Hi ${escapeHtml(customerName)}, use the secure link below to reset your password.`,

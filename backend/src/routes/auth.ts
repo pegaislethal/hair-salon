@@ -1,14 +1,65 @@
 import { Router, Request, Response } from 'express';
 import { body, validationResult } from 'express-validator';
-import User from '../models/User';
+import rateLimit from 'express-rate-limit';
+import User, { type IUser } from '../models/User';
 import { generateAccessToken, generateRefreshToken, generateSecureToken, generateOTP } from '../utils/generateToken';
 import { authenticate } from '../middleware/auth';
 import { AuthRequest } from '../types';
-import { sendEmail } from '../config/email';
+import { sendEmail, type SendEmailResult } from '../config/email';
 import jwt from 'jsonwebtoken';
-import { verificationTemplate, passwordResetTemplate } from '../utils/emailTemplates';
+import { verificationTemplate, verificationTextTemplate, passwordResetTemplate } from '../utils/emailTemplates';
 
 const router = Router();
+const verificationResendCooldownMs = 60 * 1000;
+const resendVerificationLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many verification requests. Please try again later.' },
+});
+const resendVerificationMessage = 'If an active account with that email needs verification, it can receive a new email if the resend cooldown has passed. Check your inbox and spam folder.';
+
+const getFrontendBaseUrl = (): string | null => {
+  const configuredUrl = process.env.FRONTEND_URL?.trim();
+  if (!configuredUrl) return null;
+  try {
+    const parsedUrl = new URL(configuredUrl);
+    const isLocalhost = ['localhost', '127.0.0.1'].includes(parsedUrl.hostname);
+    if (parsedUrl.protocol !== 'https:' && !isLocalhost) return null;
+    return parsedUrl.toString().replace(/\/$/, '');
+  } catch {
+    return null;
+  }
+};
+
+const sendVerificationEmail = async (user: IUser): Promise<SendEmailResult> => {
+  const frontendBaseUrl = getFrontendBaseUrl();
+  if (!frontendBaseUrl) {
+    const error = 'FRONTEND_URL must be configured with the frontend origin and use HTTPS outside localhost.';
+    console.error('[AUTH] Verification email not attempted', { error });
+    return { success: false, error };
+  }
+
+  const token = generateSecureToken();
+  const otp = generateOTP();
+  user.emailVerificationToken = token;
+  user.emailVerificationExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  user.emailVerificationOTP = otp;
+  user.emailVerificationOTPExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  user.verificationEmailSentAt = new Date();
+  await user.save({ validateBeforeSave: false });
+
+  const verifyUrl = `${frontendBaseUrl}/verify-email?token=${token}`;
+  return sendEmail({
+    to: user.email,
+    subject: 'Verify Your Email — Iris Salon',
+    html: verificationTemplate(user.fullName, verifyUrl, otp),
+    text: verificationTextTemplate(user.fullName, verifyUrl, otp),
+    deduplicationKey: `auth:${user._id.toString()}:email_verification:${token}`,
+    type: 'email_verification',
+  });
+};
 
 const createSession = (userId: string, role: string, res: Response) => {
   const accessToken = generateAccessToken(userId, role);
@@ -42,34 +93,72 @@ router.post('/register', [
     const { fullName, email, phone, password } = req.body;
     const existing = await User.findOne({ email: email.toLowerCase() });
     if (existing) {
-      res.status(400).json({ success: false, message: 'Email already registered.' });
+      res.status(409).json({ success: false, message: 'Email already registered.' });
       return;
     }
-    const verificationToken = generateSecureToken();
-    const verificationOTP = generateOTP();
     const user = await User.create({
-      fullName, email, phone, password,
-      emailVerificationToken: verificationToken,
-      emailVerificationExpiry: new Date(Date.now() + 24 * 60 * 60 * 1000),
-      emailVerificationOTP: verificationOTP,
-      emailVerificationOTPExpiry: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      fullName,
+      email,
+      phone,
+      password,
     });
-    const frontendBase = (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
-    const verifyUrl = `${frontendBase}/verify-email?token=${verificationToken}`;
-    await sendEmail({
-      to: user.email,
-      subject: 'Verify Your Email — Iris Salon',
-      html: verificationTemplate(user.fullName, verifyUrl, verificationOTP),
-      deduplicationKey: `auth:${user._id.toString()}:email_verification`,
-      type: 'email_verification',
+    const emailResult = await sendVerificationEmail(user);
+    const emailRoutedToTestRecipient = emailResult.success
+      && (process.env.RESEND_TEST_MODE || 'true').trim().toLowerCase() !== 'false'
+      && Boolean((process.env.EMAIL_TEST_RECIPIENT || process.env.ADMIN_EMAIL)?.trim());
+    res.status(201).json({
+      success: true,
+      emailSent: emailResult.success,
+      emailRoutedToTestRecipient,
+      message: emailResult.success
+        ? 'Registration successful. Please check your email to verify your account.'
+        : 'Your account was created, but we could not send the verification email. Use the resend option to try again.',
     });
-    res.status(201).json({ success: true, message: 'Registration successful. Please verify your email.' });
   } catch (error) {
     if ((error as { code?: number }).code === 11000) {
-      res.status(400).json({ success: false, message: 'Email already registered.' });
+      res.status(409).json({ success: false, message: 'Email already registered.' });
       return;
     }
+    console.error('[AUTH] Registration failed', { code: (error as { code?: number }).code });
     res.status(500).json({ success: false, message: 'Server error during registration.' });
+  }
+});
+
+router.post('/resend-verification', resendVerificationLimiter, [
+  body('email').trim().isEmail().withMessage('Valid email is required'),
+], async (req: Request, res: Response): Promise<void> => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    res.status(400).json({ success: false, errors: errors.array() });
+    return;
+  }
+
+  try {
+    const email = req.body.email.trim().toLowerCase();
+    const user = await User.findOne({ email, role: 'customer', isActive: true, isEmailVerified: false });
+    if (user) {
+      const now = new Date();
+      const eligibleUser = await User.findOneAndUpdate(
+        {
+          _id: user._id,
+          role: 'customer',
+          isActive: true,
+          isEmailVerified: false,
+          $or: [
+            { verificationEmailSentAt: { $exists: false } },
+            { verificationEmailSentAt: { $lte: new Date(now.getTime() - verificationResendCooldownMs) } },
+          ],
+        },
+        { $set: { verificationEmailSentAt: now } },
+        { new: true }
+      );
+      if (eligibleUser) await sendVerificationEmail(eligibleUser);
+    }
+
+    res.json({ success: true, message: resendVerificationMessage });
+  } catch (error) {
+    console.error('[AUTH] Verification email resend failed', { code: (error as { code?: number }).code });
+    res.status(500).json({ success: false, message: 'We could not process your request. Please try again later.' });
   }
 });
 
@@ -175,15 +264,30 @@ router.put('/change-password', authenticate, [
 });
 
 // @route   POST /api/auth/verify-email
-router.post('/verify-email', async (req: Request, res: Response): Promise<void> => {
+router.post('/verify-email', [
+  body('token').optional().isString().isLength({ min: 64, max: 64 }).isHexadecimal(),
+  body('email').optional().isString().trim().isEmail(),
+  body('otp').optional().isString().matches(/^\d{6}$/),
+], async (req: Request, res: Response): Promise<void> => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    res.status(400).json({ success: false, message: 'Enter a valid verification link or email and six-digit code.' });
+    return;
+  }
+
   try {
-    const { token, otp, email } = req.body;
+    const { token, otp, email } = req.body ?? {};
+    if (!token && !(email && otp)) {
+      res.status(400).json({ success: false, message: 'A verification token or email and code are required.' });
+      return;
+    }
+
     let user;
     if (token) {
       user = await User.findOne({ emailVerificationToken: token, emailVerificationExpiry: { $gt: new Date() } });
     } else if (email && otp) {
       user = await User.findOne({
-        email: email.toLowerCase(),
+        email: email.trim().toLowerCase(),
         emailVerificationOTP: otp,
         emailVerificationOTPExpiry: { $gt: new Date() },
       });
@@ -201,6 +305,7 @@ router.post('/verify-email', async (req: Request, res: Response): Promise<void> 
     user.emailVerificationExpiry = undefined;
     user.emailVerificationOTP = undefined;
     user.emailVerificationOTPExpiry = undefined;
+    user.verificationEmailSentAt = undefined;
     user.lastLogin = new Date();
     await user.save({ validateBeforeSave: false });
     const tokens = createSession(user._id.toString(), user.role, res);
