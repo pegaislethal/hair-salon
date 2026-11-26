@@ -1,16 +1,15 @@
 import axios from 'axios';
 
-// Public HTTPS backend URL configured via NEXT_PUBLIC_API_URL
+// NEXT_PUBLIC_API_URL is the backend origin; Express exposes routes under /api.
 const getBaseUrl = (): string => {
-  if (process.env.NEXT_PUBLIC_API_URL) {
-    return process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '');
-  }
-  // When running on the same domain (via rewrites or reverse proxy)
-  if (typeof window !== 'undefined') {
-    return '/api';
-  }
-  // Local fallback for SSR/server-side development
-  return 'http://localhost:5000/api';
+  const configuredUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
+  const backendUrl = configuredUrl || (
+    process.env.NODE_ENV === 'production'
+      ? 'https://hair-salon-w24x.vercel.app'
+      : 'http://localhost:5000'
+  );
+  const normalizedUrl = backendUrl.replace(/\/+$/, '');
+  return /\/api$/i.test(normalizedUrl) ? normalizedUrl : `${normalizedUrl}/api`;
 };
 
 export const API_BASE_URL = getBaseUrl();

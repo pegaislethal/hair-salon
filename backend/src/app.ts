@@ -51,7 +51,11 @@ const allowedOrigins = Array.from(new Set([
   .flatMap((origins) => origins?.split(',') ?? [])
   .map(normalizeOrigin)
   .filter(Boolean)
-  .concat(['http://localhost:3000', 'http://127.0.0.1:3000'])));
+  .concat([
+    'https://hair-salon-gray-mu.vercel.app',
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+  ])));
 
 app.use((req, res, next) => {
   const origin = req.get('Origin');

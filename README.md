@@ -111,50 +111,35 @@ iris-hair-salon/
 
 - Enable 2-Step Verification on the Gmail account, then create a Google App Password for mail. Use the generated 16-character password, not the normal Gmail password. If Google Workspace does not offer App Passwords, the account administrator must allow them or provide another SMTP account.
 - Set `EMAIL_USER` to the Gmail account, `EMAIL_APP_PASSWORD` to its App Password, `EMAIL_FROM` to the same Gmail address (or a send-as alias configured in Gmail), and `ADMIN_EMAIL` to the salon administrator's address in `backend/.env`. The backend accepts app passwords pasted with spaces and removes those spaces before connecting.
-- These values are server-only. Add them to the backend service's environment in Render, not to the frontend or any `NEXT_PUBLIC_` variable. Also set `NODE_ENV=production` and `FRONTEND_URL` to the deployed Next.js app's public HTTPS origin. `FRONTEND_URL` is allowed by CORS and is also used to build verification and password-reset links. To allow additional frontend origins, set `CORS_ORIGIN` to a comma-separated list of exact HTTPS origins. The backend also allows `http://localhost:3000` and `http://127.0.0.1:3000` for local development. Render does not read your local `.env`.
-- The shared backend email service uses Gmail SMTP over TLS, keeps the existing branded HTML templates, and generates a plain-text alternative. Successful sends log a Gmail SMTP message ID; failures log a sanitized SMTP error without logging credentials or message contents. Check Render logs for `[EMAIL] Gmail SMTP accepted message` or `[EMAIL] Gmail SMTP delivery failed`.
-- Set the frontend's build-time `NEXT_PUBLIC_API_URL` to the backend's public URL ending in `/api` (for example, `https://<backend-host>/api`; locally this is `http://localhost:5000/api`). Rebuild/redeploy the frontend after changing it.
+- These values are server-only. Add them to the backend Vercel project's environment, not to the frontend or any `NEXT_PUBLIC_` variable. Set `NODE_ENV=production` and `FRONTEND_URL` to the deployed Next.js app's public HTTPS origin. `FRONTEND_URL` is also used to build verification and password-reset links. Set `CORS_ORIGIN` to the exact frontend origin (or comma-separated allowed origins). The backend also allows `http://localhost:3000` and `http://127.0.0.1:3000` for local development.
+- The shared backend email service uses Gmail SMTP over TLS, keeps the existing branded HTML templates, and generates a plain-text alternative. Successful sends log a Gmail SMTP message ID; failures log a sanitized SMTP error without logging credentials or message contents. Check backend deployment logs for `[EMAIL] Gmail SMTP accepted message` or `[EMAIL] Gmail SMTP delivery failed`.
+- Set the frontend's build-time `NEXT_PUBLIC_API_URL` to the backend origin without a path (for example, `https://hair-salon-w24x.vercel.app`; locally this is `http://localhost:5000`). The frontend adds `/api` because that is the prefix used by the Express route mounts. Rebuild/redeploy the frontend after changing this variable.
 - Registration stores the account and verification credentials before attempting email delivery. If delivery fails, the registration response says so and offers resend. The verification link requires an explicit confirmation click (rather than verifying on page load); the six-digit email code is also supported. Resending is limited to five requests per IP every 15 minutes and one delivery per account per minute. The resend endpoint uses a generic response to avoid confirming whether an email is registered.
 
-### Render Deployment
+### Vercel Deployment & API Verification
 
-The Express backend and Next.js frontend are separate services. For the backend Render Web Service, use:
-
-| Setting | Value |
-| --- | --- |
-| Root Directory | `backend` |
-| Build Command | `npm ci --include=dev && npm run build` |
-| Start Command | `npm start` |
-| Health Check Path | `/api/health` |
-
-Do not use `npm run dev`, `nodemon`, or `ts-node` as the Render Start Command. Those run the development server and can exhaust the small Node heap; the production `npm start` runs the compiled `dist/app.js`. Set `NODE_ENV=production` and the backend environment variables in Render. Do not set `NODE_OPTIONS` to a heap size larger than the service's available memory. If the compiled production process still runs out of memory, increase the Render instance memory.
-
-Deploy the Next.js app separately (the repository's `vercel.json` configures Vercel for the frontend and backend). Set the frontend build-time variable `NEXT_PUBLIC_API_URL` to the backend's public URL ending in `/api` when calling Render directly. A Render backend alone does not serve the Next.js `/services` page.
-
-After deploying the backend, check Render logs for both `Iris Salon API listening` and `[DB] MongoDB connected`. Open `https://<backend-host>/` in a browser to see the JSON confirmation `Salon backend is running`; `https://<backend-host>/api/health` should return HTTP 200 with `{"success":true,"status":"healthy"}`. Then check `https://<backend-host>/api/services` returns a JSON array with active services. In the frontend browser DevTools → Network tab, confirm API requests go to `https://<backend-host>/api/...`, return successfully, and show the frontend origin in `Access-Control-Allow-Origin` (with credentials enabled where needed); there should be no CORS errors or 404s. If an API request fails, check the frontend's `NEXT_PUBLIC_API_URL` and the backend's `FRONTEND_URL`/`CORS_ORIGIN`. If the services API returns an empty array, the production MongoDB database has no active service records; seed the intended database once with `npm run seed` from the backend service shell. Service-catalog database errors are logged with a `[SERVICES]` prefix without returning internal details to visitors.
-
-### Vercel CORS Setup & Verification
-
-In the Vercel project hosting the Express backend, add these environment variables for **Production** (and Preview if used), without quotes or trailing slashes, then redeploy:
+The frontend and backend are deployed separately. Configure these environment variables in the matching Vercel projects for **Production** (and Preview if used), without quotes or trailing slashes:
 
 ```env
-FRONTEND_URL=https://hair-salon-w24x.vercel.app
-CORS_ORIGIN=https://hair-salon-w24x.vercel.app
+# Frontend Vercel project (build-time)
+NEXT_PUBLIC_API_URL=https://hair-salon-w24x.vercel.app
+
+# Backend Vercel project
+FRONTEND_URL=https://hair-salon-gray-mu.vercel.app
+CORS_ORIGIN=https://hair-salon-gray-mu.vercel.app
 ```
 
-`CORS_ORIGIN` accepts multiple exact origins as a comma-separated value, for example `https://hair-salon-w24x.vercel.app,https://www.example.com`. `http://localhost:3000` and `http://127.0.0.1:3000` are allowed automatically. If the frontend and backend use the same domain, `/api/...` calls routed by `vercel.json` are same-origin; CORS matters when the browser calls a separate backend origin.
+The backend route definitions are mounted at `/api/auth`, `/api/gallery`, and `/api/services`, so the corresponding public endpoints are `/api/auth/login`, `/api/gallery`, and `/api/services`. The centralized frontend Axios client appends `/api` to the configured backend origin, including when the origin is configured with a trailing slash or already ends in `/api`. `CORS_ORIGIN` accepts multiple exact origins as a comma-separated value. Local development origins are allowed automatically.
 
-Verify after redeploy:
+Redeploy **both** Vercel projects after applying these code changes: the frontend build needs the API URL environment variable, and the backend deployment needs the API rewrite/handler and CORS update. Verify after redeploy:
 
-1. Open `https://hair-salon-w24x.vercel.app/`; expect HTTP 200 and JSON containing `"message":"Salon backend is running"`.
+1. Open `https://hair-salon-w24x.vercel.app/`; expect HTTP 200 and JSON containing `"message":"Salon backend is running"`. The health route should return `{"success":true,"status":"healthy"}` at `/api/health`.
 2. In a terminal, send a preflight:
-   ```bash
-   curl.exe -i -X OPTIONS "https://hair-salon-w24x.vercel.app/api/health" -H "Origin: https://hair-salon-w24x.vercel.app" -H "Access-Control-Request-Method: GET" -H "Access-Control-Request-Headers: authorization,content-type"
+   ```powershell
+   curl.exe -i -X OPTIONS "https://hair-salon-w24x.vercel.app/api/health" -H "Origin: https://hair-salon-gray-mu.vercel.app" -H "Access-Control-Request-Method: GET" -H "Access-Control-Request-Headers: authorization,content-type"
    ```
-   Expect HTTP 204, `Access-Control-Allow-Origin: https://hair-salon-w24x.vercel.app`, `Access-Control-Allow-Credentials: true`, and allowed methods/headers.
-3. Open the frontend, then DevTools → Network. Check an API `GET` request and its `OPTIONS` preflight: both should succeed, the response should reflect the frontend origin (never `*` with credentials), and the console should have no CORS or 404 errors. The backend returns a JSON HTTP 403 for requests carrying an unconfigured `Origin`.
-
-If Vercel returns its own `X-Vercel-Error: NOT_FOUND` for `/api/health` (rather than an Express JSON response), fix the Vercel service/rewrite routing for `/api/*`; CORS headers cannot fix a request that never reaches Express. Set the allowlist to the actual frontend origin(s); if the frontend is hosted on another domain, use that domain instead of the example above.
+   Expect HTTP 204 and `Access-Control-Allow-Origin: https://hair-salon-gray-mu.vercel.app`.
+3. Open the frontend and check the browser Network panel. Login should call `https://hair-salon-w24x.vercel.app/api/auth/login`; gallery and services should call `/api/gallery` and `/api/services` on that backend host. If `/api/health` returns Vercel's `X-Vercel-Error: NOT_FOUND`, the backend deployment is not routing requests through its Express API handler.
 
 ### Bulk Gallery Add
 
