@@ -8,11 +8,13 @@ export interface AppError extends Error {
 
 export const errorHandler = (err: AppError, req: Request, res: Response, next: NextFunction): void => {
   const statusCode = err.statusCode || 500;
-  const isProduction = process.env.NODE_ENV === 'production';
+  const isProduction = process.env.NODE_ENV === 'production'
+    || process.env.VERCEL === '1'
+    || process.env.VERCEL_ENV === 'production';
   const message = isProduction && statusCode >= 500
     ? 'Internal server error.'
     : err.message || 'Internal Server Error';
-  if (isProduction && statusCode >= 500) {
+  if (statusCode >= 500) {
     logSafeError(`ERROR Request failed with status ${statusCode}`, err);
   } else if (!isProduction) {
     console.error('[ERROR]', err);
@@ -20,7 +22,6 @@ export const errorHandler = (err: AppError, req: Request, res: Response, next: N
   res.status(statusCode).json({
     success: false,
     message,
-    ...(!isProduction && { stack: err.stack }),
   });
 };
 
