@@ -53,6 +53,7 @@ const allowedOrigins = Array.from(new Set([
   .filter(Boolean)
   .concat([
     'https://hair-salon-gray-mu.vercel.app',
+    'https://hair-salon-chohatmap-pegas-projects-be8fc807.vercel.app',
     'http://localhost:3000',
     'http://127.0.0.1:3000',
   ])));

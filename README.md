@@ -126,10 +126,10 @@ NEXT_PUBLIC_API_URL=https://hair-salon-w24x.vercel.app
 
 # Backend Vercel project
 FRONTEND_URL=https://hair-salon-gray-mu.vercel.app
-CORS_ORIGIN=https://hair-salon-gray-mu.vercel.app
+CORS_ORIGIN=https://hair-salon-gray-mu.vercel.app,https://hair-salon-chohatmap-pegas-projects-be8fc807.vercel.app
 ```
 
-The backend route definitions are mounted at `/api/auth`, `/api/gallery`, and `/api/services`, so the corresponding public endpoints are `/api/auth/login`, `/api/gallery`, and `/api/services`. The centralized frontend Axios client appends `/api` to the configured backend origin, including when the origin is configured with a trailing slash or already ends in `/api`. `CORS_ORIGIN` accepts multiple exact origins as a comma-separated value. Local development origins are allowed automatically.
+Keep `FRONTEND_URL` set to the canonical frontend URL used in verification and password-reset links. `CORS_ORIGIN` can include the canonical origin and any active Vercel preview origins as a comma-separated list; update it when preview URLs change. The backend route definitions are mounted at `/api/auth`, `/api/gallery`, and `/api/services`, so the corresponding public endpoints are `/api/auth/login`, `/api/gallery`, and `/api/services`. The centralized frontend Axios client appends `/api` to the configured backend origin, including when the origin is configured with a trailing slash or already ends in `/api`. Local development origins are allowed automatically.
 
 Redeploy **both** Vercel projects after applying these code changes: the frontend build needs the API URL environment variable, and the backend deployment needs the API rewrite/handler and CORS update. Verify after redeploy:
 
