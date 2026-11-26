@@ -35,23 +35,35 @@ if (process.env.NODE_ENV === 'production') app.set('trust proxy', 1);
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 
 // CORS
-const allowedOrigins = [
+const normalizeOrigin = (value: string): string => {
+  try {
+    const url = new URL(value.trim());
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.origin : '';
+  } catch {
+    return '';
+  }
+};
+
+const allowedOrigins = Array.from(new Set([
   process.env.FRONTEND_URL,
   process.env.CORS_ORIGIN,
 ]
   .flatMap((origins) => origins?.split(',') ?? [])
-  .map((origin) => origin.trim().replace(/\/$/, ''))
-  .filter(Boolean);
-allowedOrigins.push('http://localhost:3000', 'http://127.0.0.1:3000');
+  .map(normalizeOrigin)
+  .filter(Boolean)
+  .concat(['http://localhost:3000', 'http://127.0.0.1:3000'])));
+
+app.use((req, res, next) => {
+  const origin = req.get('Origin');
+  if (!origin || allowedOrigins.includes(normalizeOrigin(origin))) {
+    next();
+    return;
+  }
+  res.vary('Origin').status(403).json({ success: false, message: 'Origin not allowed by CORS.' });
+});
 
 app.use(cors({
-  origin: (origin, callback) => {
-    // Allow non-browser requests (e.g. server-to-server, curl, mobile apps)
-    if (!origin) return callback(null, true);
-
-    const cleanOrigin = origin.replace(/\/$/, '');
-    callback(null, allowedOrigins.includes(cleanOrigin));
-  },
+  origin: allowedOrigins,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],

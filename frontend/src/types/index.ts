@@ -108,6 +108,7 @@ export interface GalleryItem {
   image: string;
   category: string;
   description?: string;
+  tags?: string[];
   order: number;
   isActive: boolean;
   createdAt: string;

@@ -133,6 +133,37 @@ Deploy the Next.js app separately (the repository's `vercel.json` configures Ver
 
 After deploying the backend, check Render logs for both `Iris Salon API listening` and `[DB] MongoDB connected`. Open `https://<backend-host>/` in a browser to see the JSON confirmation `Salon backend is running`; `https://<backend-host>/api/health` should return HTTP 200 with `{"success":true,"status":"healthy"}`. Then check `https://<backend-host>/api/services` returns a JSON array with active services. In the frontend browser DevTools → Network tab, confirm API requests go to `https://<backend-host>/api/...`, return successfully, and show the frontend origin in `Access-Control-Allow-Origin` (with credentials enabled where needed); there should be no CORS errors or 404s. If an API request fails, check the frontend's `NEXT_PUBLIC_API_URL` and the backend's `FRONTEND_URL`/`CORS_ORIGIN`. If the services API returns an empty array, the production MongoDB database has no active service records; seed the intended database once with `npm run seed` from the backend service shell. Service-catalog database errors are logged with a `[SERVICES]` prefix without returning internal details to visitors.
 
+### Vercel CORS Setup & Verification
+
+In the Vercel project hosting the Express backend, add these environment variables for **Production** (and Preview if used), without quotes or trailing slashes, then redeploy:
+
+```env
+FRONTEND_URL=https://hair-salon-w24x.vercel.app
+CORS_ORIGIN=https://hair-salon-w24x.vercel.app
+```
+
+`CORS_ORIGIN` accepts multiple exact origins as a comma-separated value, for example `https://hair-salon-w24x.vercel.app,https://www.example.com`. `http://localhost:3000` and `http://127.0.0.1:3000` are allowed automatically. If the frontend and backend use the same domain, `/api/...` calls routed by `vercel.json` are same-origin; CORS matters when the browser calls a separate backend origin.
+
+Verify after redeploy:
+
+1. Open `https://hair-salon-w24x.vercel.app/`; expect HTTP 200 and JSON containing `"message":"Salon backend is running"`.
+2. In a terminal, send a preflight:
+   ```bash
+   curl.exe -i -X OPTIONS "https://hair-salon-w24x.vercel.app/api/health" -H "Origin: https://hair-salon-w24x.vercel.app" -H "Access-Control-Request-Method: GET" -H "Access-Control-Request-Headers: authorization,content-type"
+   ```
+   Expect HTTP 204, `Access-Control-Allow-Origin: https://hair-salon-w24x.vercel.app`, `Access-Control-Allow-Credentials: true`, and allowed methods/headers.
+3. Open the frontend, then DevTools → Network. Check an API `GET` request and its `OPTIONS` preflight: both should succeed, the response should reflect the frontend origin (never `*` with credentials), and the console should have no CORS or 404 errors. The backend returns a JSON HTTP 403 for requests carrying an unconfigured `Origin`.
+
+If Vercel returns its own `X-Vercel-Error: NOT_FOUND` for `/api/health` (rather than an Express JSON response), fix the Vercel service/rewrite routing for `/api/*`; CORS headers cannot fix a request that never reaches Express. Set the allowlist to the actual frontend origin(s); if the frontend is hosted on another domain, use that domain instead of the example above.
+
+### Bulk Gallery Add
+
+- Sign in as a Super Admin and open `/admin/gallery` → **Bulk Add**. Choose multiple JPG, PNG, GIF, or WebP files (up to 20 files, 5 MB each), or add image URLs one at a time. Set per-item titles/captions and shared category, comma-separated tags, and public visibility before submitting.
+- File uploads are stored in Cloudinary, so configure the backend's `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET`. URL-based batches do not upload files and do not require Cloudinary.
+- The modal shows upload progress and item-by-item results. A failed item does not prevent other valid items from being created. Active entries appear in `/gallery` under their category; inactive entries remain visible to admins but are hidden publicly.
+- The API is `POST /api/gallery/bulk` and requires an authenticated `super_admin` or `sub_admin` token. To verify authorization, send the request without a token and confirm it returns HTTP 401; an authenticated customer should receive HTTP 403. The admin page calls the protected `GET /api/gallery/admin` endpoint to include both active and hidden records.
+- To smoke-test the complete flow, add two valid URLs with different titles, submit, and confirm the success count in the modal/toast and the new items in `/admin/gallery`. Then open `/gallery` and check the selected category. The UI blocks malformed URLs before submission. To verify server-side partial validation, use an authorized API client to submit a batch containing one valid URL and one malformed URL in the `metadata.items` array; expect HTTP 207 with the valid item in `data` and the invalid item in `errors`.
+
 ### Nepal Phone Validation & Optional Verification
 
 - Signup and customer profile accept 10-digit Nepal mobile numbers beginning with `98` or `97`, with optional `+977`, spaces, or hyphens. Phone numbers are stored as E.164 (`+97798XXXXXXXX`).

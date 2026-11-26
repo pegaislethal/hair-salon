@@ -5,6 +5,7 @@ export interface IGallery extends Document {
   description?: string;
   image: string;
   category: string;
+  tags: string[];
   order: number;
   isActive: boolean;
   createdAt: Date;
@@ -16,6 +17,7 @@ const gallerySchema = new Schema<IGallery>({
   description: String,
   image: { type: String, required: true },
   category: { type: String, default: 'General' },
+  tags: { type: [String], default: [] },
   order: { type: Number, default: 0 },
   isActive: { type: Boolean, default: true },
 }, { timestamps: true });

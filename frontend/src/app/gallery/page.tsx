@@ -7,7 +7,7 @@ import { galleryService } from '../../services/galleryService';
 
 export default function GalleryPage() {
   const [items, setItems] = useState<GalleryDisplayItem[]>(localGalleryItems);
-  const [selectedCat, setSelectedCat] = useState<'Men' | 'Women'>('Men');
+  const [selectedCat, setSelectedCat] = useState('Men');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -26,7 +26,11 @@ export default function GalleryPage() {
     loadGallery();
   }, []);
 
-  const categories: Array<'Men' | 'Women'> = ['Men', 'Women'];
+  const categories = Array.from(new Set([
+    'Men',
+    'Women',
+    ...items.map((item) => String(item.category || '').trim()).filter(Boolean),
+  ]));
   const filtered = items.filter((item) =>
     String(item.category || '').trim().toLowerCase() === selectedCat.toLowerCase()
   );
