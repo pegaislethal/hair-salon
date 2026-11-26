@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { PublicLayout } from '../layouts/PublicLayout';
 import { Service } from '../types';
-import { GalleryDisplayItem, mergeGalleryItems, localGalleryItems } from '../data/gallery';
+import { GalleryDisplayItem, mergeGalleryItems } from '../data/gallery';
 import { serviceService } from '../services/serviceService';
 import { galleryService } from '../services/galleryService';
 import { formatPrice } from '../utils/format';
@@ -22,7 +22,9 @@ import {
 
 export default function HomePage() {
   const [featuredServices, setFeaturedServices] = useState<Service[]>([]);
-  const [gallery, setGallery] = useState<GalleryDisplayItem[]>(localGalleryItems);
+  const [gallery, setGallery] = useState<GalleryDisplayItem[]>([]);
+  const [servicesLoadError, setServicesLoadError] = useState(false);
+  const [galleryLoadError, setGalleryLoadError] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -34,12 +36,20 @@ export default function HomePage() {
         ]);
         if (servicesRes.status === 'fulfilled' && servicesRes.value.success) {
           setFeaturedServices(servicesRes.value.data.slice(0, 6));
+        } else {
+          setServicesLoadError(true);
+          console.error('Unable to load featured services.');
         }
         if (galleryRes.status === 'fulfilled' && galleryRes.value.success) {
           setGallery(mergeGalleryItems(galleryRes.value.data).slice(0, 4));
+        } else {
+          setGalleryLoadError(true);
+          console.error('Unable to load featured gallery items.');
         }
       } catch (err) {
         console.error('Error fetching home data:', err);
+        setServicesLoadError(true);
+        setGalleryLoadError(true);
       } finally {
         setLoading(false);
       }
@@ -183,46 +193,13 @@ export default function HomePage() {
                 </div>
               ))
             ) : (
-              // Fallback cards while backend is initially empty
-              [
-                { title: 'Haircut & Styling', cat: 'Hair', dur: 60, price: 800, desc: 'Signature bespoke cut tailored to your facial contours with wash, blow-dry and polish.' },
-                { title: 'Full Balayage & Gloss', cat: 'Color', dur: 120, price: 3000, desc: 'Hand-painted highlights providing multidimensional, naturally sun-kissed hair transformation.' },
-                { title: 'Keratin Smoothing', cat: 'Treatment', dur: 150, price: 5000, desc: 'Deep infusion therapy restoring keratin proteins for up to 4 months of silky frizz-free hair.' },
-                { title: 'Rejuvenating Scalp Spa', cat: 'Spa', dur: 45, price: 1500, desc: 'Detoxifying scalp scrub, aromatherapeutic steam massage, and deep conditioning repair.' },
-                { title: 'Radiance Hydrating Facial', cat: 'Skin', dur: 60, price: 2000, desc: 'Advanced botanical formulation restoring hydration, elasticity, and youthful vibrance.' },
-                { title: 'Bridal Couture Styling', cat: 'Bridal', dur: 180, price: 15000, desc: 'Complete luxury bridal hair styling, bespoke veil placement, and makeup artistry.' },
-              ].map((item, idx) => (
-                <div
-                  key={idx}
-                  className="bg-white rounded-xl border border-zinc-200/80 p-6 flex flex-col justify-between hover:shadow-lg transition-all"
-                >
-                  <div className="space-y-4">
-                    <div className="flex items-start justify-between">
-                      <span className="text-[11px] uppercase tracking-wider font-semibold text-champagne-800 bg-champagne-50 px-2.5 py-1 rounded">
-                        {item.cat}
-                      </span>
-                      <div className="flex items-center gap-1.5 text-xs text-zinc-500">
-                        <Clock className="w-3.5 h-3.5" />
-                        <span>{item.dur} mins</span>
-                      </div>
-                    </div>
-                    <h3 className="font-serif text-xl font-bold text-zinc-900">{item.title}</h3>
-                    <p className="text-xs text-zinc-600 leading-relaxed">{item.desc}</p>
-                  </div>
-                  <div className="pt-6 mt-6 border-t border-zinc-100 flex items-center justify-between">
-                    <div>
-                      <span className="text-[10px] uppercase tracking-wider text-zinc-400 block font-medium">Starting at</span>
-                      <span className="text-base font-bold text-zinc-900">{formatPrice(item.price)}</span>
-                    </div>
-                    <Link
-                      href="/book"
-                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-zinc-900 hover:text-champagne-700 transition-colors"
-                    >
-                      Book Now <ArrowRight className="w-3.5 h-3.5" />
-                    </Link>
-                  </div>
-                </div>
-              ))
+              <div className="col-span-full rounded-xl border border-dashed border-zinc-200 py-12 text-center text-sm text-zinc-500">
+                {loading
+                  ? 'Loading services...'
+                  : servicesLoadError
+                    ? 'The service menu is temporarily unavailable.'
+                    : 'No services are currently available.'}
+              </div>
             )}
           </div>
 
@@ -303,23 +280,29 @@ export default function HomePage() {
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {(gallery.length > 0 ? gallery : [
-              { image: 'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=600&q=80', title: 'Caramel Balayage' },
-              { image: 'https://images.unsplash.com/photo-1595476108010-b4d1f102b1b1?auto=format&fit=crop&w=600&q=80', title: 'Precision Bob' },
-              { image: 'https://images.unsplash.com/photo-1562322140-8baeececf3df?auto=format&fit=crop&w=600&q=80', title: 'Bridal Updo' },
-              { image: 'https://images.unsplash.com/photo-1503951914875-452162b0f3f1?auto=format&fit=crop&w=600&q=80', title: 'Men Fade Styling' },
-            ]).map((item: any, idx: number) => (
-              <div key={idx} className="group relative aspect-square rounded-xl overflow-hidden bg-zinc-100 shadow-sm">
-                <img
-                  src={item.image}
-                  alt={item.title || 'Salon style'}
-                  className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity p-4 flex items-end">
-                  <span className="text-white text-xs font-medium tracking-wide">{item.title}</span>
+            {gallery.length > 0 ? (
+              gallery.map((item) => (
+                <div key={item._id} className="group relative aspect-square rounded-xl overflow-hidden bg-zinc-100 shadow-sm">
+                  <img
+                    src={item.image}
+                    alt={item.title || 'Salon style'}
+                    loading="lazy"
+                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity p-4 flex items-end">
+                    <span className="text-white text-xs font-medium tracking-wide">{item.title}</span>
+                  </div>
                 </div>
+              ))
+            ) : (
+              <div className="col-span-full rounded-xl border border-dashed border-zinc-200 py-12 text-center text-sm text-zinc-500">
+                {loading
+                  ? 'Loading gallery...'
+                  : galleryLoadError
+                    ? 'The gallery is temporarily unavailable.'
+                    : 'No gallery photos are available yet.'}
               </div>
-            ))}
+            )}
           </div>
         </div>
       </section>

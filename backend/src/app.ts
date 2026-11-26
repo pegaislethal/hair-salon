@@ -107,6 +107,23 @@ app.get('/api/health', (_req, res) => {
   res.status(200).json({ success: true, status: 'healthy' });
 });
 
+app.use('/api', async (req, res, next) => {
+  if (req.path === '/health') {
+    next();
+    return;
+  }
+  try {
+    await connectDB();
+    next();
+  } catch {
+    res.status(503).json({ success: false, message: 'Database temporarily unavailable.' });
+  }
+});
+
+app.get('/api/ready', (_req, res) => {
+  res.status(200).json({ success: true, status: 'ready', database: 'connected' });
+});
+
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/appointments', appointmentRoutes);

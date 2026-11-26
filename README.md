@@ -50,7 +50,7 @@ iris-hair-salon/
 ## 🚀 Quick Start Guide
 
 ### 1. Prerequisites
-- **Node.js** v18+ (tested with Node v24)
+- **Node.js** v20.19+ (tested with Node v24)
 - **MongoDB** running locally or via MongoDB Atlas
 
 ---
@@ -113,7 +113,7 @@ iris-hair-salon/
 - Set `EMAIL_USER` to the Gmail account, `EMAIL_APP_PASSWORD` to its App Password, `EMAIL_FROM` to the same Gmail address (or a send-as alias configured in Gmail), and `ADMIN_EMAIL` to the salon administrator's address in `backend/.env`. The backend accepts app passwords pasted with spaces and removes those spaces before connecting.
 - These values are server-only. Add them to the backend Vercel project's environment, not to the frontend or any `NEXT_PUBLIC_` variable. Set `NODE_ENV=production` and `FRONTEND_URL` to the deployed Next.js app's public HTTPS origin. `FRONTEND_URL` is also used to build verification and password-reset links. Set `CORS_ORIGIN` to the exact frontend origin (or comma-separated allowed origins). The backend also allows `http://localhost:3000` and `http://127.0.0.1:3000` for local development.
 - The shared backend email service uses Gmail SMTP over TLS, keeps the existing branded HTML templates, and generates a plain-text alternative. Successful sends log a Gmail SMTP message ID; failures log a sanitized SMTP error without logging credentials or message contents. Check backend deployment logs for `[EMAIL] Gmail SMTP accepted message` or `[EMAIL] Gmail SMTP delivery failed`.
-- Set the frontend's build-time `NEXT_PUBLIC_API_URL` to the backend origin without a path (for example, `https://hair-salon-w24x.vercel.app`; locally this is `http://localhost:5000`). The frontend adds `/api` because that is the prefix used by the Express route mounts. Rebuild/redeploy the frontend after changing this variable.
+- Set the frontend's build-time `NEXT_PUBLIC_API_URL` to the backend API base including `/api` (for example, `https://hair-salon-w24x.vercel.app/api`; locally this is `http://localhost:5000/api`). The centralized client normalizes the prefix if the origin is configured with or without it. Rebuild/redeploy the frontend after changing this variable.
 - Registration stores the account and verification credentials before attempting email delivery. If delivery fails, the registration response says so and offers resend. The verification link requires an explicit confirmation click (rather than verifying on page load); the six-digit email code is also supported. Resending is limited to five requests per IP every 15 minutes and one delivery per account per minute. The resend endpoint uses a generic response to avoid confirming whether an email is registered.
 
 ### Vercel Deployment & API Verification
@@ -122,7 +122,7 @@ The frontend and backend are deployed separately. Configure these environment va
 
 ```env
 # Frontend Vercel project (build-time)
-NEXT_PUBLIC_API_URL=https://hair-salon-w24x.vercel.app
+NEXT_PUBLIC_API_URL=https://hair-salon-w24x.vercel.app/api
 
 # Backend Vercel project
 NODE_ENV=production
@@ -135,9 +135,15 @@ CORS_ORIGIN=https://hair-salon-gray-mu.vercel.app,https://hair-salon-chohatmap-p
 
 `MONGODB_URI`, `JWT_SECRET`, and `JWT_REFRESH_SECRET` must be set on the backend Vercel project; use a MongoDB URI reachable from Vercel and different strong secrets for access and refresh tokens. `JWT_EXPIRE` and `JWT_REFRESH_EXPIRE` are optional (defaults: `7d` and `30d`). Email credentials are not used by login; configure them separately for verification and password-reset email. Keep `FRONTEND_URL` set to the canonical frontend URL used in verification and password-reset links. `CORS_ORIGIN` can include the canonical origin and any active Vercel preview origins as a comma-separated list; update it when preview URLs change. The backend route definitions are mounted at `/api/auth`, `/api/gallery`, and `/api/services`, so the corresponding public endpoints are `/api/auth/login`, `/api/gallery`, and `/api/services`. The centralized frontend Axios client appends `/api` to the configured backend origin, including when the origin is configured with a trailing slash or already ends in `/api`. Local development origins are allowed automatically.
 
-Redeploy the **backend** after applying backend code or environment changes. Redeploy the frontend only if its build-time API URL changes. Verify after the backend redeploy:
+In Vercel Project Settings, confirm the backend Root Directory is `backend`, its build command is `npm run build`, and its Node.js runtime is at least 20.19; confirm the frontend Root Directory is `frontend`, framework is Next.js, and `NEXT_PUBLIC_API_URL` is set for Production before building. The root `vercel.json` routes `/api/*` to the backend service and other paths to the frontend. `MONGODB_URI` must select the intended database in its URI path. In MongoDB Atlas Network Access, ensure Vercel's actual outbound egress is permitted; prefer supported Vercel static egress/fixed IPs or an appropriately restricted network path, and do not open the cluster broadly as a shortcut. I cannot inspect the Vercel or Atlas dashboards from this workspace.
 
-1. Open `https://hair-salon-w24x.vercel.app/`; expect HTTP 200 and JSON containing `"message":"Salon backend is running"`. The health route should return `{"success":true,"status":"healthy"}` at `/api/health`.
+Also configure `EMAIL_USER`, `EMAIL_APP_PASSWORD`, and `EMAIL_FROM` for verification and other outbound email; `SMS_PROVIDER` and `SMS_API_KEY` for SMS (with optional `SMS_SENDER_ID`); and `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` for image/CV uploads. `BCRYPT_SALT_ROUNDS` defaults to `12`, `MONGODB_DNS_SERVERS` is optional, and `PORT`/`VERCEL` are supplied by the runtime. `SUPER_ADMIN_EMAIL`, `SUPER_ADMIN_PASSWORD`, `SUPER_ADMIN_NAME`, and optional `SALON_NOTIFICATION_EMAIL` are seed-script settings only. The seed script adds sample services when none exist; do not run it against production unless those records are explicitly intended. `ADMIN_EMAIL` is not read by the current backend source.
+
+The route gate waits for a successful database connection before database-backed API handlers run and returns HTTP 503 with a generic message if MongoDB is unavailable. `/api/health` is a liveness check; `/api/ready` waits for MongoDB and returns 200 only when the database is connected. Connection diagnostics appear in Vercel Function Logs with MongoDB URIs and common credential values redacted.
+
+Redeploy the **backend** after applying backend code or environment changes, and redeploy the **frontend** after frontend code changes or a build-time API URL change. Both projects need redeployment for the code changes described here. Verify after deployment:
+
+1. Open `https://hair-salon-w24x.vercel.app/`; expect HTTP 200 and JSON containing `"message":"Salon backend is running"`. `/api/health` checks liveness; `/api/ready` should return `{"success":true,"status":"ready","database":"connected"}` only when MongoDB is reachable.
 2. In a terminal, send a preflight:
    ```powershell
    curl.exe -i -X OPTIONS "https://hair-salon-w24x.vercel.app/api/health" -H "Origin: https://hair-salon-gray-mu.vercel.app" -H "Access-Control-Request-Method: GET" -H "Access-Control-Request-Headers: authorization,content-type"

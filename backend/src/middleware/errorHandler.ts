@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { logSafeError } from '../utils/logSafeError';
 
 export interface AppError extends Error {
   statusCode?: number;
@@ -12,14 +13,7 @@ export const errorHandler = (err: AppError, req: Request, res: Response, next: N
     ? 'Internal server error.'
     : err.message || 'Internal Server Error';
   if (isProduction && statusCode >= 500) {
-    const internalMessage = (err.message || 'Unknown error.')
-      .replace(/mongodb(?:\+srv)?:\/\/[^\s"'<>]+/gi, '[redacted MongoDB URI]')
-      .replace(/\b(password|secret|token)(\s*[:=]\s*)[^\s,;]+/gi, '$1$2[redacted]');
-    console.error('[ERROR] Request failed.', {
-      statusCode,
-      name: err.name,
-      message: internalMessage,
-    });
+    logSafeError(`ERROR Request failed with status ${statusCode}`, err);
   } else if (!isProduction) {
     console.error('[ERROR]', err);
   }

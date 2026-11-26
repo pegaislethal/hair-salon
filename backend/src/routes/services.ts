@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import Service from '../models/Service';
 import { authenticate, isSuperAdmin } from '../middleware/auth';
+import { logSafeError } from '../utils/logSafeError';
 
 const router = Router();
 
@@ -15,7 +16,7 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
     const services = await Service.find(filter).sort({ category: 1, name: 1 });
     res.json({ success: true, data: services });
   } catch (error) {
-    console.error('[SERVICES] Failed to load service catalog:', error instanceof Error ? error.message : 'Unknown error.');
+    logSafeError('SERVICES Failed to load service catalog', error);
     res.status(500).json({ success: false, message: 'Server error.' });
   }
 });

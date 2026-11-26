@@ -12,6 +12,7 @@ import { AuthRequest } from '../types';
 import { uploadDocumentToCloudinary } from '../config/cloudinary';
 import { sendEmail } from '../config/email';
 import { jobApplicationReceiptTemplate, newApplicationAdminTemplate, jobApplicationStatusTemplate } from '../utils/emailTemplates';
+import { logSafeError } from '../utils/logSafeError';
 
 const router = Router();
 const cvUpload = multer({
@@ -39,6 +40,7 @@ router.get('/public', async (_req: Request, res: Response): Promise<void> => {
       : [];
     res.json({ success: true, data: { isHiring: settings.isHiring, vacancies } });
   } catch (error) {
+    logSafeError('RECRUITMENT Failed to load public vacancies', error);
     res.status(500).json({ success: false, message: 'Unable to load current vacancies.' });
   }
 });

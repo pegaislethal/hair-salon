@@ -12,6 +12,7 @@ import { normalizeNepalPhone } from '../utils/nepalPhone';
 import jwt from 'jsonwebtoken';
 import { verificationTemplate, verificationTextTemplate, passwordResetTemplate } from '../utils/emailTemplates';
 import connectDB from '../config/database';
+import { logSafeError } from '../utils/logSafeError';
 
 const router = Router();
 const verificationResendCooldownMs = 60 * 1000;
@@ -228,18 +229,7 @@ router.post('/login', [
     const tokens = createSession(user._id.toString(), user.role, res);
     res.json({ success: true, data: { user, ...tokens } });
   } catch (error) {
-    const errorDetails = error instanceof Error
-      ? {
-          name: error.name,
-          message: error.message
-            .replace(/mongodb(?:\+srv)?:\/\/[^\s"'<>]+/gi, '[redacted MongoDB URI]')
-            .replace(/\b(password|secret|token)(\s*[:=]\s*)[^\s,;]+/gi, '$1$2[redacted]'),
-        }
-      : { name: 'UnknownError', message: 'Unknown login failure.' };
-    const errorCode = typeof error === 'object' && error !== null && 'code' in error
-      ? String(error.code)
-      : undefined;
-    console.error('[AUTH] Login failed.', { stage, ...errorDetails, code: errorCode });
+    logSafeError(`AUTH Login failed at ${stage}`, error);
     res.status(500).json({ success: false, message: 'Server error during login.' });
   }
 });

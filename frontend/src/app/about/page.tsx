@@ -55,6 +55,7 @@ export default function AboutPage() {
                 <img
                   src="https://images.unsplash.com/photo-1521590832167-7bcbfaa6381f?auto=format&fit=crop&w=600&q=80"
                   alt="Stylist crafting hair"
+                  loading="lazy"
                   className="w-full h-full object-cover"
                 />
               </div>
@@ -62,6 +63,7 @@ export default function AboutPage() {
                 <img
                   src="https://images.unsplash.com/photo-1560066984-138dadb4c035?auto=format&fit=crop&w=600&q=80"
                   alt="Iris salon salon interior"
+                  loading="lazy"
                   className="w-full h-full object-cover"
                 />
               </div>

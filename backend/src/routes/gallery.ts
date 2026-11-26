@@ -5,6 +5,7 @@ import { body, validationResult } from 'express-validator';
 import Gallery from '../models/Gallery';
 import { authenticate, isAdminOrSubAdmin } from '../middleware/auth';
 import { deleteFromCloudinary, uploadToCloudinary } from '../config/cloudinary';
+import { logSafeError } from '../utils/logSafeError';
 
 const router = Router();
 const MAX_BULK_ITEMS = 20;
@@ -66,6 +67,7 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
     const gallery = await Gallery.find(filter).sort({ order: 1, createdAt: -1 });
     res.json({ success: true, data: gallery });
   } catch (error) {
+    logSafeError('GALLERY Failed to load public gallery', error);
     res.status(500).json({ success: false, message: 'Server error.' });
   }
 });

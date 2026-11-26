@@ -2,13 +2,14 @@
 
 import React, { useEffect, useState } from 'react';
 import { PublicLayout } from '../../layouts/PublicLayout';
-import { GalleryDisplayItem, mergeGalleryItems, localGalleryItems } from '../../data/gallery';
+import { GalleryDisplayItem, mergeGalleryItems } from '../../data/gallery';
 import { galleryService } from '../../services/galleryService';
 
 export default function GalleryPage() {
-  const [items, setItems] = useState<GalleryDisplayItem[]>(localGalleryItems);
+  const [items, setItems] = useState<GalleryDisplayItem[]>([]);
   const [selectedCat, setSelectedCat] = useState('Men');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
     async function loadGallery() {
@@ -16,8 +17,12 @@ export default function GalleryPage() {
         const res = await galleryService.getGallery();
         if (res.success && res.data) {
           setItems(mergeGalleryItems(res.data));
+        } else {
+          setLoadError(true);
+          console.error('Gallery API returned an unsuccessful response.');
         }
       } catch (err) {
+        setLoadError(true);
         console.error('Failed to load gallery:', err);
       } finally {
         setLoading(false);
@@ -73,7 +78,9 @@ export default function GalleryPage() {
             <div className="py-16 text-center text-sm text-zinc-500">Loading gallery...</div>
           ) : filtered.length === 0 ? (
             <div className="rounded-xl border border-zinc-200 bg-zinc-50 py-16 text-center text-sm text-zinc-500">
-              No {selectedCat.toLowerCase()} gallery photos are available yet.
+              {loadError
+                ? 'The gallery is temporarily unavailable. Please try again later.'
+                : `No ${selectedCat.toLowerCase()} gallery photos are available yet.`}
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -85,6 +92,7 @@ export default function GalleryPage() {
                   <img
                     src={item.image}
                     alt={item.title || 'Salon style'}
+                    loading="lazy"
                     className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity p-6 flex flex-col justify-end">
