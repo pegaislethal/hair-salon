@@ -6,7 +6,6 @@ import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 import path from 'path';
-import mongoose from 'mongoose';
 
 dotenv.config();
 
@@ -37,10 +36,13 @@ app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 
 // CORS
 const allowedOrigins = [
-  process.env.FRONTEND_URL?.replace(/\/$/, ''),
-  'http://localhost:3000',
-  'http://127.0.0.1:3000',
-].filter(Boolean) as string[];
+  process.env.FRONTEND_URL,
+  process.env.CORS_ORIGIN,
+]
+  .flatMap((origins) => origins?.split(',') ?? [])
+  .map((origin) => origin.trim().replace(/\/$/, ''))
+  .filter(Boolean);
+allowedOrigins.push('http://localhost:3000', 'http://127.0.0.1:3000');
 
 app.use(cors({
   origin: (origin, callback) => {
@@ -48,17 +50,7 @@ app.use(cors({
     if (!origin) return callback(null, true);
 
     const cleanOrigin = origin.replace(/\/$/, '');
-    const isAllowed =
-      allowedOrigins.includes(cleanOrigin) ||
-      cleanOrigin.endsWith('.vercel.app') ||
-      cleanOrigin.includes('localhost') ||
-      cleanOrigin.includes('127.0.0.1');
-
-    if (isAllowed) {
-      callback(null, true);
-    } else {
-      callback(null, true); // Allow configured frontend domain with credentials
-    }
+    callback(null, allowedOrigins.includes(cleanOrigin));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -82,15 +74,18 @@ if (process.env.NODE_ENV === 'development') app.use(morgan('dev'));
 // Static files
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
-// Health check
-app.get('/api/health', (req, res) => {
-  const databaseConnected = mongoose.connection.readyState === 1;
-  res.status(databaseConnected ? 200 : 503).json({
-    success: databaseConnected,
-    message: databaseConnected ? 'Iris Salon API and database are ready.' : 'Iris Salon API is running; database is unavailable.',
-    database: databaseConnected ? 'connected' : 'disconnected',
-    timestamp: new Date(),
+// Liveness endpoints
+app.get('/', (_req, res) => {
+  res.status(200).json({
+    success: true,
+    message: 'Salon backend is running',
+    status: 'OK',
+    timestamp: new Date().toISOString(),
   });
+});
+
+app.get('/api/health', (_req, res) => {
+  res.status(200).json({ success: true, status: 'healthy' });
 });
 
 // Routes
