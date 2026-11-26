@@ -13,33 +13,48 @@ if (configuredDnsServers?.length) {
   dns.setServers(configuredDnsServers);
 }
 
-let connectionAttemptInProgress = false;
+let connectionPromise: Promise<void> | null = null;
+
+const sanitizeDatabaseError = (message: string): string => message
+  .replace(/mongodb(?:\+srv)?:\/\/[^\s"'<>]+/gi, '[redacted MongoDB URI]')
+  .replace(/\b(password|secret|token)(\s*[:=]\s*)[^\s,;]+/gi, '$1$2[redacted]');
 
 const connectDB = async (): Promise<void> => {
-  if (connectionAttemptInProgress || mongoose.connection.readyState === 1) return;
-  connectionAttemptInProgress = true;
+  if (mongoose.connection.readyState === 1) return;
+  if (connectionPromise) return connectionPromise;
 
-  try {
-    const uri = process.env.MONGODB_URI;
-    if (!uri) throw new Error('MONGODB_URI is not configured.');
-
-    const conn = await mongoose.connect(uri, { serverSelectionTimeoutMS: 10000 });
-    console.log(`[DB] MongoDB connected: ${conn.connection.host}`);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown database connection error.';
-    console.error(`[DB] MongoDB connection failed: ${message}`);
-    console.error('[DB] Retrying in 5 seconds.');
-    const retry = setTimeout(() => {
-      void connectDB();
-    }, 5000);
-    retry.unref();
-  } finally {
-    connectionAttemptInProgress = false;
+  const uri = process.env.MONGODB_URI?.trim();
+  if (!uri) {
+    const error = new Error('MONGODB_URI is not configured.');
+    console.error('[DB] MongoDB connection failed: MONGODB_URI is not configured.');
+    throw error;
   }
+
+  connectionPromise = mongoose.connect(uri, { serverSelectionTimeoutMS: 10000 })
+    .then((conn) => {
+      console.log(`[DB] MongoDB connected: ${conn.connection.host}`);
+    })
+    .catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : 'Unknown database connection error.';
+      console.error('[DB] MongoDB connection failed:', sanitizeDatabaseError(message));
+      console.error('[DB] Retrying MongoDB connection in 5 seconds.');
+      const retry = setTimeout(() => {
+        void connectDB().catch(() => {
+          console.error('[DB] Background retry failed; database-backed requests will retry on demand.');
+        });
+      }, 5000);
+      retry.unref();
+      throw error;
+    })
+    .finally(() => {
+      connectionPromise = null;
+    });
+
+  return connectionPromise;
 };
 
 mongoose.connection.on('error', (err) => {
-  console.error(`[DB] MongoDB error: ${err.message}`);
+  console.error('[DB] MongoDB error:', sanitizeDatabaseError(err.message));
 });
 
 mongoose.connection.on('disconnected', () => {

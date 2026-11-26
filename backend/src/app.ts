@@ -26,7 +26,9 @@ import publicRoutes from './routes/public';
 import recruitmentRoutes from './routes/recruitment';
 
 // Connect database
-connectDB();
+void connectDB().catch(() => {
+  console.error('[DB] Startup connection unavailable; database-backed requests will retry.');
+});
 
 const app = express();
 if (process.env.NODE_ENV === 'production') app.set('trust proxy', 1);

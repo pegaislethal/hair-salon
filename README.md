@@ -125,13 +125,17 @@ The frontend and backend are deployed separately. Configure these environment va
 NEXT_PUBLIC_API_URL=https://hair-salon-w24x.vercel.app
 
 # Backend Vercel project
+NODE_ENV=production
+MONGODB_URI=<production MongoDB connection string>
+JWT_SECRET=<long random signing secret>
+JWT_REFRESH_SECRET=<different long random signing secret>
 FRONTEND_URL=https://hair-salon-gray-mu.vercel.app
 CORS_ORIGIN=https://hair-salon-gray-mu.vercel.app,https://hair-salon-chohatmap-pegas-projects-be8fc807.vercel.app
 ```
 
-Keep `FRONTEND_URL` set to the canonical frontend URL used in verification and password-reset links. `CORS_ORIGIN` can include the canonical origin and any active Vercel preview origins as a comma-separated list; update it when preview URLs change. The backend route definitions are mounted at `/api/auth`, `/api/gallery`, and `/api/services`, so the corresponding public endpoints are `/api/auth/login`, `/api/gallery`, and `/api/services`. The centralized frontend Axios client appends `/api` to the configured backend origin, including when the origin is configured with a trailing slash or already ends in `/api`. Local development origins are allowed automatically.
+`MONGODB_URI`, `JWT_SECRET`, and `JWT_REFRESH_SECRET` must be set on the backend Vercel project; use a MongoDB URI reachable from Vercel and different strong secrets for access and refresh tokens. `JWT_EXPIRE` and `JWT_REFRESH_EXPIRE` are optional (defaults: `7d` and `30d`). Email credentials are not used by login; configure them separately for verification and password-reset email. Keep `FRONTEND_URL` set to the canonical frontend URL used in verification and password-reset links. `CORS_ORIGIN` can include the canonical origin and any active Vercel preview origins as a comma-separated list; update it when preview URLs change. The backend route definitions are mounted at `/api/auth`, `/api/gallery`, and `/api/services`, so the corresponding public endpoints are `/api/auth/login`, `/api/gallery`, and `/api/services`. The centralized frontend Axios client appends `/api` to the configured backend origin, including when the origin is configured with a trailing slash or already ends in `/api`. Local development origins are allowed automatically.
 
-Redeploy **both** Vercel projects after applying these code changes: the frontend build needs the API URL environment variable, and the backend deployment needs the API rewrite/handler and CORS update. Verify after redeploy:
+Redeploy the **backend** after applying backend code or environment changes. Redeploy the frontend only if its build-time API URL changes. Verify after the backend redeploy:
 
 1. Open `https://hair-salon-w24x.vercel.app/`; expect HTTP 200 and JSON containing `"message":"Salon backend is running"`. The health route should return `{"success":true,"status":"healthy"}` at `/api/health`.
 2. In a terminal, send a preflight:

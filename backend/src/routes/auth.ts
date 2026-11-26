@@ -11,6 +11,7 @@ import { sendSMS } from '../config/sms';
 import { normalizeNepalPhone } from '../utils/nepalPhone';
 import jwt from 'jsonwebtoken';
 import { verificationTemplate, verificationTextTemplate, passwordResetTemplate } from '../utils/emailTemplates';
+import connectDB from '../config/database';
 
 const router = Router();
 const verificationResendCooldownMs = 60 * 1000;
@@ -198,13 +199,18 @@ router.post('/login', [
     res.status(400).json({ success: false, errors: errors.array() });
     return;
   }
+  let stage = 'connect database';
   try {
+    await connectDB();
+
+    stage = 'find account';
     const { email, password } = req.body;
     const user = await User.findOne({ email: email.toLowerCase() }).select('+password');
     if (!user || !user.isActive) {
       res.status(401).json({ success: false, message: 'Invalid credentials.' });
       return;
     }
+    stage = 'compare password';
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
       res.status(401).json({ success: false, message: 'Invalid credentials.' });
@@ -214,11 +220,26 @@ router.post('/login', [
       res.status(403).json({ success: false, message: 'Please verify your email before logging in.' });
       return;
     }
+    stage = 'save last login';
     user.lastLogin = new Date();
     await user.save({ validateBeforeSave: false });
+
+    stage = 'create session tokens';
     const tokens = createSession(user._id.toString(), user.role, res);
     res.json({ success: true, data: { user, ...tokens } });
   } catch (error) {
+    const errorDetails = error instanceof Error
+      ? {
+          name: error.name,
+          message: error.message
+            .replace(/mongodb(?:\+srv)?:\/\/[^\s"'<>]+/gi, '[redacted MongoDB URI]')
+            .replace(/\b(password|secret|token)(\s*[:=]\s*)[^\s,;]+/gi, '$1$2[redacted]'),
+        }
+      : { name: 'UnknownError', message: 'Unknown login failure.' };
+    const errorCode = typeof error === 'object' && error !== null && 'code' in error
+      ? String(error.code)
+      : undefined;
+    console.error('[AUTH] Login failed.', { stage, ...errorDetails, code: errorCode });
     res.status(500).json({ success: false, message: 'Server error during login.' });
   }
 });

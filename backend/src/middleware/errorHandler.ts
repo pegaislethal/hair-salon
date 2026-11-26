@@ -7,14 +7,26 @@ export interface AppError extends Error {
 
 export const errorHandler = (err: AppError, req: Request, res: Response, next: NextFunction): void => {
   const statusCode = err.statusCode || 500;
-  const message = err.message || 'Internal Server Error';
-  if (process.env.NODE_ENV === 'development') {
+  const isProduction = process.env.NODE_ENV === 'production';
+  const message = isProduction && statusCode >= 500
+    ? 'Internal server error.'
+    : err.message || 'Internal Server Error';
+  if (isProduction && statusCode >= 500) {
+    const internalMessage = (err.message || 'Unknown error.')
+      .replace(/mongodb(?:\+srv)?:\/\/[^\s"'<>]+/gi, '[redacted MongoDB URI]')
+      .replace(/\b(password|secret|token)(\s*[:=]\s*)[^\s,;]+/gi, '$1$2[redacted]');
+    console.error('[ERROR] Request failed.', {
+      statusCode,
+      name: err.name,
+      message: internalMessage,
+    });
+  } else if (!isProduction) {
     console.error('[ERROR]', err);
   }
   res.status(statusCode).json({
     success: false,
     message,
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
+    ...(!isProduction && { stack: err.stack }),
   });
 };
 
