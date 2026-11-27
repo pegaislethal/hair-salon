@@ -18,23 +18,31 @@ export default function ServicesPage() {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [loading, setLoading] = useState<boolean>(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setLoadError(null);
     async function fetchServices() {
       try {
         const res = await serviceService.getServices();
-        if (res.success && res.data) {
+        if (res.success) {
+          if (!active) return;
           setServices(res.data);
+        } else if (active) {
+          setLoadError('We could not load the service menu. Please try again.');
         }
       } catch (err) {
         console.error('Failed to load services:', err);
-        setLoadError('We could not load the service menu. Please try again shortly.');
+        if (active) setLoadError('We could not load the service menu. Please try again.');
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     }
     fetchServices();
-  }, []);
+    return () => { active = false; };
+  }, [retryCount]);
 
   const categories = ['all', ...Array.from(new Set(services.map((s) => s.category || 'General')))];
 
@@ -90,19 +98,35 @@ export default function ServicesPage() {
                     : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
                 }`}
               >
-                {cat}
+                {cat === 'all' ? 'All services' : cat}
               </button>
             ))}
           </div>
 
           {loading ? (
-            <div className="py-20 text-center space-y-3">
-              <div className="w-8 h-8 border-2 border-champagne-300 border-t-zinc-900 rounded-full animate-spin mx-auto" />
-              <p className="text-xs text-zinc-500">Loading service catalog...</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8" aria-label="Loading services">
+              {Array.from({ length: 6 }, (_, index) => (
+                <div key={index} aria-hidden="true" className="rounded-xl border border-zinc-200 p-6 animate-pulse">
+                  <div className="flex justify-between">
+                    <div className="h-5 w-20 rounded bg-champagne-100" />
+                    <div className="h-5 w-16 rounded bg-zinc-100" />
+                  </div>
+                  <div className="mt-7 h-6 w-3/4 rounded bg-zinc-100" />
+                  <div className="mt-4 h-4 rounded bg-zinc-100" />
+                  <div className="mt-2 h-4 w-2/3 rounded bg-zinc-100" />
+                  <div className="mt-8 border-t border-zinc-100 pt-5 flex justify-between">
+                    <div className="h-5 w-20 rounded bg-zinc-100" />
+                    <div className="h-9 w-24 rounded bg-champagne-100" />
+                  </div>
+                </div>
+              ))}
             </div>
           ) : loadError ? (
-            <div className="text-center py-16 border rounded-xl border-dashed border-zinc-200">
+            <div role="alert" className="text-center py-16 border rounded-xl border-dashed border-zinc-200">
               <p className="text-sm font-semibold text-zinc-800">{loadError}</p>
+              <button type="button" onClick={() => setRetryCount((count) => count + 1)} className="mt-4 text-sm font-semibold text-zinc-900 underline underline-offset-4">
+                Retry
+              </button>
             </div>
           ) : filteredServices.length === 0 ? (
             <div className="text-center py-16 border rounded-xl border-dashed border-zinc-200">

@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { Sidebar } from '../components/Sidebar';
 import { CustomerSidebar } from '../components/CustomerSidebar';
 import { useAuth } from '../context/AuthContext';
-import { Menu, X, Bell } from 'lucide-react';
+import { Menu, X } from 'lucide-react';
 import Link from 'next/link';
 
 interface DashboardLayoutProps {
@@ -42,11 +42,14 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
           <div className="relative z-10 w-72 bg-white flex flex-col h-full shadow-2xl">
             <button
               onClick={() => setMobileSidebarOpen(false)}
+              aria-label="Close dashboard navigation"
               className="absolute top-4 right-4 p-2 rounded-lg text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100"
             >
               <X className="w-5 h-5" />
             </button>
-            {role === 'customer' ? <CustomerSidebar /> : <Sidebar />}
+            {role === 'customer'
+              ? <CustomerSidebar onNavigate={() => setMobileSidebarOpen(false)} />
+              : <Sidebar onNavigate={() => setMobileSidebarOpen(false)} />}
           </div>
         </div>
       )}
@@ -58,6 +61,8 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
           <div className="flex items-center gap-3">
             <button
               onClick={() => setMobileSidebarOpen(true)}
+              aria-label="Open dashboard navigation"
+              aria-expanded={mobileSidebarOpen}
               className="lg:hidden p-2 rounded-lg text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100"
             >
               <Menu className="w-5 h-5" />
@@ -90,7 +95,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
         )}
 
         {/* Page Content */}
-        <main className="flex-1 p-4 sm:p-8 max-w-7xl w-full mx-auto">{children}</main>
+        <main className="flex-1 p-4 sm:p-8 max-w-7xl w-full mx-auto page-enter">{children}</main>
       </div>
     </div>
   );

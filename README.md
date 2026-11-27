@@ -107,6 +107,8 @@ iris-hair-salon/
    ```
    *The frontend will be running at `http://localhost:3000`.*
 
+The public footer and contact page read the salon's address, contact details, social links, and business hours from **Admin → Business Settings**. The inquiry form opens the visitor's configured email app and does not store or send messages through the website.
+
 ### Email Verification & Gmail SMTP Configuration
 
 - Enable 2-Step Verification on the Gmail account, then create a Google App Password for mail. Use the generated 16-character password, not the normal Gmail password. If Google Workspace does not offer App Passwords, the account administrator must allow them or provide another SMTP account.

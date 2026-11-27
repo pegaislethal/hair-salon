@@ -36,8 +36,12 @@ router.get('/public', async (_req: Request, res: Response): Promise<void> => {
   try {
     const settings = await getSettings();
     const vacancies = settings.isHiring
-      ? await JobVacancy.find({ isActive: true, $or: [{ applicationDeadline: null }, { applicationDeadline: { $gte: new Date() } }] }).sort({ createdAt: -1 })
+      ? await JobVacancy.find({ isActive: true, $or: [{ applicationDeadline: null }, { applicationDeadline: { $gte: new Date() } }] })
+        .select('_id title description requirements experience applicationDeadline isActive createdAt')
+        .sort({ createdAt: -1 })
+        .lean()
       : [];
+    res.set('Cache-Control', 'public, max-age=0, s-maxage=15, stale-while-revalidate=60');
     res.json({ success: true, data: { isHiring: settings.isHiring, vacancies } });
   } catch (error) {
     logSafeError('RECRUITMENT Failed to load public vacancies', error);
@@ -109,6 +113,7 @@ router.post('/apply', cvUpload.single('cv'), [
     }
     res.status(201).json({ success: true, message: 'Your application has been submitted.', data: { id: application._id } });
   } catch (error) {
+    logSafeError('RECRUITMENT Failed to submit application', error);
     res.status(500).json({ success: false, message: 'Unable to submit your application.' });
   }
 });
@@ -117,6 +122,7 @@ router.get('/admin/settings', authenticate, isAdminOrSubAdmin, async (_req: Auth
   try {
     res.json({ success: true, data: await getSettings() });
   } catch (error) {
+    logSafeError('RECRUITMENT Failed to load hiring settings', error);
     res.status(500).json({ success: false, message: 'Unable to load hiring settings.' });
   }
 });
@@ -128,6 +134,7 @@ router.put('/admin/settings', authenticate, isSuperAdmin, body('isHiring').isBoo
     const settings = await HiringSettings.findOneAndUpdate({}, { isHiring: req.body.isHiring }, { new: true, upsert: true, runValidators: true });
     res.json({ success: true, data: settings });
   } catch (error) {
+    logSafeError('RECRUITMENT Failed to update hiring settings', error);
     res.status(500).json({ success: false, message: 'Unable to update hiring settings.' });
   }
 });
@@ -137,6 +144,7 @@ router.get('/admin/vacancies', authenticate, isAdminOrSubAdmin, async (_req: Aut
     const vacancies = await JobVacancy.find().sort({ createdAt: -1 });
     res.json({ success: true, data: vacancies });
   } catch (error) {
+    logSafeError('RECRUITMENT Failed to load vacancies', error);
     res.status(500).json({ success: false, message: 'Unable to load vacancies.' });
   }
 });
@@ -160,6 +168,7 @@ router.post('/admin/vacancies', authenticate, isSuperAdmin, [
     });
     res.status(201).json({ success: true, data: vacancy });
   } catch (error) {
+    logSafeError('RECRUITMENT Failed to create vacancy', error);
     res.status(500).json({ success: false, message: 'Unable to create vacancy.' });
   }
 });
@@ -173,6 +182,7 @@ router.put('/admin/vacancies/:id', authenticate, isSuperAdmin, async (req: AuthR
     if (!vacancy) { res.status(404).json({ success: false, message: 'Vacancy not found.' }); return; }
     res.json({ success: true, data: vacancy });
   } catch (error) {
+    logSafeError('RECRUITMENT Failed to update vacancy', error);
     res.status(500).json({ success: false, message: 'Unable to update vacancy.' });
   }
 });
@@ -183,6 +193,7 @@ router.patch('/admin/vacancies/:id/deactivate', authenticate, isSuperAdmin, asyn
     if (!vacancy) { res.status(404).json({ success: false, message: 'Vacancy not found.' }); return; }
     res.json({ success: true, data: vacancy });
   } catch (error) {
+    logSafeError('RECRUITMENT Failed to deactivate vacancy', error);
     res.status(500).json({ success: false, message: 'Unable to deactivate vacancy.' });
   }
 });
@@ -192,6 +203,7 @@ router.get('/admin/applications', authenticate, isAdminOrSubAdmin, async (_req: 
     const applications = await JobApplication.find().sort({ createdAt: -1 }).populate('vacancy', 'title').populate('reviewedBy', 'fullName');
     res.json({ success: true, data: applications });
   } catch (error) {
+    logSafeError('RECRUITMENT Failed to load applications', error);
     res.status(500).json({ success: false, message: 'Unable to load applications.' });
   }
 });
@@ -216,6 +228,7 @@ router.patch('/admin/applications/:id/decision', authenticate, isSuperAdmin, bod
     });
     res.json({ success: true, data: application });
   } catch (error) {
+    logSafeError('RECRUITMENT Failed to update application decision', error);
     res.status(500).json({ success: false, message: 'Unable to update application.' });
   }
 });

@@ -1,9 +1,40 @@
-import React from 'react';
+'use client';
+
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { MapPin, Phone, Mail, Clock, Instagram, Facebook } from 'lucide-react';
+import { settingsService } from '../services/settingsService';
+import type { PublicSalonInfo } from '../types';
+import { formatSalonTime, getSalonAddress, salonBusinessDays } from '../utils/salonInfo';
+
+const getSocialUrl = (value?: string): string | null => {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url.toString() : null;
+  } catch {
+    return null;
+  }
+};
 
 export const Footer: React.FC = () => {
+  const [salonInfo, setSalonInfo] = useState<PublicSalonInfo | null>(null);
+
+  useEffect(() => {
+    settingsService.getPublicSalonInfo()
+      .then((response) => {
+        if (response.success) setSalonInfo(response.data);
+      })
+      .catch((error) => console.error('Unable to load public salon information:', error));
+  }, []);
+
+  const address = getSalonAddress(salonInfo);
+  const socialLinks = [
+    { href: getSocialUrl(salonInfo?.socialMedia?.instagram), label: 'Instagram', Icon: Instagram },
+    { href: getSocialUrl(salonInfo?.socialMedia?.facebook), label: 'Facebook', Icon: Facebook },
+  ].filter((link): link is typeof link & { href: string } => Boolean(link.href));
+
   return (
     <footer className="bg-zinc-900 text-zinc-300 pt-16 pb-12 border-t border-zinc-800">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -22,26 +53,24 @@ export const Footer: React.FC = () => {
               />
             </div>
             <p className="text-sm text-zinc-400 leading-relaxed">
-              Experience the pinnacle of luxury hair styling, beauty therapies, and personalized salon care in a sanctuary designed for your comfort and timeless elegance.
+              Explore salon services, browse available looks, and reserve an appointment with Iris Hair Cut and Salon.
             </p>
-            <div className="flex items-center gap-3 pt-2">
-              <a
-                href="https://instagram.com"
-                target="_blank"
-                rel="noreferrer"
-                className="w-9 h-9 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-400 hover:text-champagne-300 hover:bg-zinc-700 transition-colors"
-              >
-                <Instagram className="w-4 h-4" />
-              </a>
-              <a
-                href="https://facebook.com"
-                target="_blank"
-                rel="noreferrer"
-                className="w-9 h-9 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-400 hover:text-champagne-300 hover:bg-zinc-700 transition-colors"
-              >
-                <Facebook className="w-4 h-4" />
-              </a>
-            </div>
+            {socialLinks.length > 0 && (
+              <div className="flex items-center gap-3 pt-2">
+                {socialLinks.map(({ href, label, Icon }) => (
+                  <a
+                    key={label}
+                    href={href}
+                    target="_blank"
+                    rel="noreferrer"
+                    aria-label={label}
+                    className="w-9 h-9 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-400 hover:text-champagne-300 hover:bg-zinc-700 transition-colors"
+                  >
+                    <Icon className="w-4 h-4" />
+                  </a>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Quick Links */}
@@ -80,18 +109,17 @@ export const Footer: React.FC = () => {
               Working Hours
             </h4>
             <ul className="space-y-2 text-sm text-zinc-400">
-              <li className="flex justify-between py-1 border-b border-zinc-800">
-                <span>Monday – Friday</span>
-                <span className="text-white font-medium">9:00 AM – 7:00 PM</span>
-              </li>
-              <li className="flex justify-between py-1 border-b border-zinc-800">
-                <span>Saturday</span>
-                <span className="text-white font-medium">9:00 AM – 6:00 PM</span>
-              </li>
-              <li className="flex justify-between py-1">
-                <span>Sunday</span>
-                <span className="text-champagne-300 font-medium">10:00 AM – 5:00 PM</span>
-              </li>
+              {salonBusinessDays.map((day) => {
+                const hours = salonInfo?.businessHours[day];
+                return (
+                  <li key={day} className="flex justify-between gap-3 py-1 border-b border-zinc-800 last:border-0">
+                    <span>{day[0].toUpperCase() + day.slice(1)}</span>
+                    <span className="text-right text-white font-medium">
+                      {!hours ? 'Not listed' : hours.isClosed ? 'Closed' : `${formatSalonTime(hours.open)} – ${formatSalonTime(hours.close)}`}
+                    </span>
+                  </li>
+                );
+              })}
             </ul>
           </div>
 
@@ -101,21 +129,30 @@ export const Footer: React.FC = () => {
               Get in Touch
             </h4>
             <ul className="space-y-3 text-sm text-zinc-400">
-              <li className="flex items-start gap-3">
-                <MapPin className="w-5 h-5 text-champagne-400 shrink-0 mt-0.5" />
-                <span>Kathmandu, Nepal</span>
-              </li>
-              <li className="flex items-center gap-3">
-                <Phone className="w-4 h-4 text-champagne-400 shrink-0" />
-                <span>+977-9800000000</span>
-              </li>
-              <li className="flex items-center gap-3">
-                <Mail className="w-4 h-4 text-champagne-400 shrink-0" />
-                <span>info@irissalon.com</span>
-              </li>
+              {address && (
+                <li className="flex items-start gap-3">
+                  <MapPin className="w-5 h-5 text-champagne-400 shrink-0 mt-0.5" />
+                  <span>{address}</span>
+                </li>
+              )}
+              {salonInfo?.contactPhone && (
+                <li className="flex items-center gap-3">
+                  <Phone className="w-4 h-4 text-champagne-400 shrink-0" />
+                  <a href={`tel:${salonInfo.contactPhone}`} className="hover:text-white">{salonInfo.contactPhone}</a>
+                </li>
+              )}
+              {salonInfo?.contactEmail && (
+                <li className="flex items-center gap-3">
+                  <Mail className="w-4 h-4 text-champagne-400 shrink-0" />
+                  <a href={`mailto:${salonInfo.contactEmail}`} className="break-all hover:text-white">{salonInfo.contactEmail}</a>
+                </li>
+              )}
+              {!address && !salonInfo?.contactPhone && !salonInfo?.contactEmail && (
+                <li className="text-zinc-500">Contact details are not listed yet.</li>
+              )}
               <li className="flex items-center gap-3">
                 <Clock className="w-4 h-4 text-champagne-400 shrink-0" />
-                <span>Walk-ins & Appointments Welcome</span>
+                <Link href="/contact" className="hover:text-white">View salon contact information</Link>
               </li>
             </ul>
           </div>

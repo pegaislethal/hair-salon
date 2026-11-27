@@ -6,15 +6,20 @@ import SalonSettings from '../models/SalonSettings';
 import { getAvailableSlots } from '../utils/availability';
 import { IService } from '../models/Service';
 import mongoose from 'mongoose';
+import { logSafeError } from '../utils/logSafeError';
 
 const router = Router();
 
 // @route   GET /api/public/salon-info
 router.get('/salon-info', async (req: Request, res: Response): Promise<void> => {
   try {
-    const settings = await SalonSettings.findOne();
+    const settings = await SalonSettings.findOne()
+      .select('businessName address city country contactPhone contactEmail socialMedia businessHours')
+      .lean();
+    res.set('Cache-Control', 'public, max-age=0, s-maxage=60, stale-while-revalidate=300');
     res.json({ success: true, data: settings });
   } catch (error) {
+    logSafeError('PUBLIC Failed to load salon information', error);
     res.status(500).json({ success: false, message: 'Server error.' });
   }
 });

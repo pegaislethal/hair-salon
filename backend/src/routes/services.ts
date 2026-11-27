@@ -13,7 +13,13 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
     const filter: any = {};
     if (active === 'true') filter.isActive = true;
     if (category) filter.category = category;
-    const services = await Service.find(filter).sort({ category: 1, name: 1 });
+    if (active === 'true') {
+      res.set('Cache-Control', 'public, max-age=0, s-maxage=30, stale-while-revalidate=120');
+    }
+    const services = await Service.find(filter)
+      .select('_id name description image price duration bufferDuration category isActive createdAt updatedAt')
+      .sort({ category: 1, name: 1 })
+      .lean();
     res.json({ success: true, data: services });
   } catch (error) {
     logSafeError('SERVICES Failed to load service catalog', error);

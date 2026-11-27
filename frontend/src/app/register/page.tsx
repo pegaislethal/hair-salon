@@ -1,16 +1,21 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { PublicLayout } from '../../layouts/PublicLayout';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import { ResendVerificationForm } from '../../components/ResendVerificationForm';
 import { authService } from '../../services/authService';
 import { getNepalPhoneInputValue, normalizeNepalPhone } from '../../utils/nepalPhone';
+import { useAuth } from '../../context/AuthContext';
+import { getDashboardPath, getSafeRedirectPath } from '../../utils/authRedirect';
 import { Sparkles, AlertCircle, CheckCircle2 } from 'lucide-react';
 
 export default function RegisterPage() {
+  const router = useRouter();
+  const { user, isAuthenticated, loading: authLoading } = useAuth();
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -24,6 +29,14 @@ export default function RegisterPage() {
   const [phoneTouched, setPhoneTouched] = useState(false);
 
   const phoneValidation = normalizeNepalPhone(phone);
+
+  useEffect(() => {
+    if (authLoading || !isAuthenticated || !user) return;
+    const requestedRedirect = new URLSearchParams(window.location.search).get('redirect');
+    router.replace(
+      getSafeRedirectPath(requestedRedirect, window.location.origin) ?? getDashboardPath(user.role)
+    );
+  }, [authLoading, isAuthenticated, user, router]);
 
   const handlePhoneChange = (value: string) => {
     const nextPhone = getNepalPhoneInputValue(value);

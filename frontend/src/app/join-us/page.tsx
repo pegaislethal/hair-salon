@@ -12,17 +12,28 @@ export default function JoinUsPage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setError('');
     recruitmentService.getPublic()
       .then((response) => {
+        if (!active) return;
         setIsHiring(response.data.isHiring);
         setVacancies(response.data.vacancies);
         setSelectedVacancy(response.data.vacancies[0]?._id || '');
       })
-      .catch(() => setError('Unable to load current vacancies. Please try again later.'))
-      .finally(() => setLoading(false));
-  }, []);
+      .catch((requestError) => {
+        console.error('Unable to load current vacancies:', requestError);
+        if (active) setError('Unable to load current vacancies. Please try again.');
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => { active = false; };
+  }, [retryCount]);
 
   const submitApplication = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -54,7 +65,12 @@ export default function JoinUsPage() {
       </section>
       <section className="mx-auto max-w-5xl space-y-8 px-4 py-12">
         {loading ? <p className="text-center text-sm text-zinc-500">Checking opportunities...</p> : error && !vacancies.length ? (
-          <p className="rounded-lg bg-rose-50 p-4 text-sm text-rose-700">{error}</p>
+          <div role="alert" className="rounded-lg bg-rose-50 p-4 text-sm text-rose-700">
+            <p>{error}</p>
+            <button type="button" onClick={() => setRetryCount((count) => count + 1)} className="mt-3 font-semibold underline underline-offset-4">
+              Retry
+            </button>
+          </div>
         ) : !isHiring ? (
           <p className="rounded-xl border border-zinc-200 bg-white p-8 text-center text-zinc-700">Currently, we are not hiring. Please check back later.</p>
         ) : vacancies.length === 0 ? (

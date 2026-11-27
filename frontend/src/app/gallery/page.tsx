@@ -7,37 +7,41 @@ import { galleryService } from '../../services/galleryService';
 
 export default function GalleryPage() {
   const [items, setItems] = useState<GalleryDisplayItem[]>([]);
-  const [selectedCat, setSelectedCat] = useState('Men');
+  const [selectedCat, setSelectedCat] = useState('all');
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setLoadError(false);
     async function loadGallery() {
       try {
         const res = await galleryService.getGallery();
-        if (res.success && res.data) {
+        if (res.success) {
+          if (!active) return;
           setItems(mergeGalleryItems(res.data));
         } else {
-          setLoadError(true);
+          if (active) setLoadError(true);
           console.error('Gallery API returned an unsuccessful response.');
         }
       } catch (err) {
-        setLoadError(true);
+        if (active) setLoadError(true);
         console.error('Failed to load gallery:', err);
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     }
     loadGallery();
-  }, []);
+    return () => { active = false; };
+  }, [retryCount]);
 
-  const categories = Array.from(new Set([
-    'Men',
-    'Women',
-    ...items.map((item) => String(item.category || '').trim()).filter(Boolean),
-  ]));
+  const categories = ['all', ...Array.from(new Set(
+    items.map((item) => String(item.category || '').trim()).filter(Boolean)
+  ))];
   const filtered = items.filter((item) =>
-    String(item.category || '').trim().toLowerCase() === selectedCat.toLowerCase()
+    selectedCat === 'all' || String(item.category || '').trim().toLowerCase() === selectedCat.toLowerCase()
   );
 
   return (
@@ -51,7 +55,7 @@ export default function GalleryPage() {
             Iris Lookbook & Gallery
           </h1>
           <p className="text-sm sm:text-base text-zinc-600 leading-relaxed">
-            Real transformations created by our master stylists. Be inspired for your next salon visit.
+            Browse salon looks and find inspiration for your next visit.
           </p>
         </div>
       </section>
@@ -69,18 +73,29 @@ export default function GalleryPage() {
                     : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
                 }`}
               >
-                {cat}
+                {cat === 'all' ? 'All styles' : cat}
               </button>
             ))}
           </div>
 
           {loading ? (
-            <div className="py-16 text-center text-sm text-zinc-500">Loading gallery...</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6" aria-label="Loading gallery">
+              {Array.from({ length: 6 }, (_, index) => (
+                <div key={index} aria-hidden="true" className="aspect-[4/5] rounded-xl bg-zinc-100 animate-pulse" />
+              ))}
+            </div>
           ) : filtered.length === 0 ? (
-            <div className="rounded-xl border border-zinc-200 bg-zinc-50 py-16 text-center text-sm text-zinc-500">
+            <div role={loadError ? 'alert' : undefined} className="rounded-xl border border-zinc-200 bg-zinc-50 py-16 text-center text-sm text-zinc-500">
               {loadError
                 ? 'The gallery is temporarily unavailable. Please try again later.'
-                : `No ${selectedCat.toLowerCase()} gallery photos are available yet.`}
+                : 'No gallery photos are available yet.'}
+              {loadError && (
+                <div>
+                  <button type="button" onClick={() => setRetryCount((count) => count + 1)} className="mt-4 font-semibold text-zinc-900 underline underline-offset-4">
+                    Retry
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">

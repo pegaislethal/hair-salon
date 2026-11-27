@@ -11,28 +11,27 @@ import { authService } from '../../services/authService';
 import { useAuth } from '../../context/AuthContext';
 import { readBookingDraft } from '../../utils/bookingDraft';
 import { showBookingLoginToast } from '../../utils/bookingAuth';
-import { Sparkles, AlertCircle, ArrowRight } from 'lucide-react';
-
-const getSafeRedirectPath = (requestedRedirect: string | null): string | null => {
-  if (!requestedRedirect) return null;
-  try {
-    const target = new URL(requestedRedirect, window.location.origin);
-    if (target.origin !== window.location.origin) return null;
-    return `${target.pathname}${target.search}${target.hash}`;
-  } catch {
-    return null;
-  }
-};
+import { getDashboardPath, getSafeRedirectPath } from '../../utils/authRedirect';
+import { Sparkles, AlertCircle } from 'lucide-react';
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login, isAuthenticated, loading: authLoading } = useAuth();
+  const { login, user, isAuthenticated, loading: authLoading } = useAuth();
   const authToastHandled = useRef(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [canResendVerification, setCanResendVerification] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (authLoading || !isAuthenticated || !user) return;
+    const requestedRedirect = new URLSearchParams(window.location.search).get('redirect');
+    router.replace(
+      getSafeRedirectPath(requestedRedirect, window.location.origin) ??
+        (user.role === 'customer' && readBookingDraft() ? '/book' : getDashboardPath(user.role))
+    );
+  }, [authLoading, isAuthenticated, user, router]);
 
   useEffect(() => {
     if (authLoading || authToastHandled.current) return;
@@ -54,18 +53,16 @@ export default function LoginPage() {
       if (res.success && res.data) {
         login(res.data.accessToken, res.data.refreshToken, res.data.user);
         const requestedRedirect = new URLSearchParams(window.location.search).get('redirect');
-        const safeRedirectPath = getSafeRedirectPath(requestedRedirect);
+        const safeRedirectPath = getSafeRedirectPath(requestedRedirect, window.location.origin);
         if (safeRedirectPath) {
           router.replace(safeRedirectPath);
           return;
         }
-        if (res.data.user.role === 'super_admin') {
-          router.replace('/admin/dashboard');
-        } else if (res.data.user.role === 'sub_admin') {
-          router.replace('/sub-admin/dashboard');
-        } else {
-          router.replace(readBookingDraft() ? '/book' : '/customer/dashboard');
-        }
+        router.replace(
+          res.data.user.role === 'customer' && readBookingDraft()
+            ? '/book'
+            : getDashboardPath(res.data.user.role)
+        );
       } else {
         setError('Login failed. Please verify your credentials.');
       }

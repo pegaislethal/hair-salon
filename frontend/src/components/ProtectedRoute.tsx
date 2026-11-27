@@ -16,14 +16,15 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowe
   useEffect(() => {
     if (!loading) {
       if (!isAuthenticated) {
-        router.push('/login');
+        const destination = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+        router.replace(`/login?redirect=${encodeURIComponent(destination)}`);
       } else if (allowedRoles && user && !allowedRoles.includes(user.role)) {
         if (user.role === 'super_admin') {
-          router.push('/admin/dashboard');
+          router.replace('/admin/dashboard');
         } else if (user.role === 'sub_admin') {
-          router.push('/sub-admin/dashboard');
+          router.replace('/sub-admin/dashboard');
         } else {
-          router.push('/customer/dashboard');
+          router.replace('/customer/dashboard');
         }
       }
     }

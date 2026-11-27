@@ -48,11 +48,12 @@ export const Navbar: React.FC = () => {
           {/* Desktop Nav Links */}
           <nav className="hidden md:flex items-center gap-8">
             {navLinks.map((link) => {
-              const isActive = pathname === link.href;
+              const isActive = pathname === link.href || (link.href !== '/' && pathname.startsWith(`${link.href}/`));
               return (
                 <Link
                   key={link.name}
                   href={link.href}
+                  aria-current={isActive ? 'page' : undefined}
                   className={`text-sm font-medium tracking-wide transition-colors relative py-1 ${
                     isActive ? 'text-zinc-900 font-semibold' : 'text-zinc-600 hover:text-zinc-900'
                   }`}
@@ -154,6 +155,8 @@ export const Navbar: React.FC = () => {
           <div className="flex md:hidden items-center gap-2">
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              aria-label={mobileMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
+              aria-expanded={mobileMenuOpen}
               className="p-2 rounded-lg text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 transition-colors"
             >
               {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
@@ -170,6 +173,7 @@ export const Navbar: React.FC = () => {
               key={link.name}
               href={link.href}
               onClick={() => setMobileMenuOpen(false)}
+              aria-current={pathname === link.href ? 'page' : undefined}
               className={`block px-3 py-2 rounded-md text-base font-medium ${
                 pathname === link.href ? 'bg-champagne-50 text-champagne-900 font-semibold' : 'text-zinc-700 hover:bg-zinc-50'
               }`}

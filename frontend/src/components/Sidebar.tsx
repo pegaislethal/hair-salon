@@ -20,7 +20,7 @@ import {
   LogOut,
 } from 'lucide-react';
 
-export const Sidebar: React.FC = () => {
+export const Sidebar: React.FC<{ onNavigate?: () => void }> = ({ onNavigate }) => {
   const pathname = usePathname();
   const { user, isSuperAdmin, logout } = useAuth();
 
@@ -81,6 +81,8 @@ export const Sidebar: React.FC = () => {
               <Link
                 key={link.name}
                 href={link.href}
+                onClick={onNavigate}
+                aria-current={isActive ? 'page' : undefined}
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                   isActive
                     ? 'bg-zinc-900 text-white shadow-sm'

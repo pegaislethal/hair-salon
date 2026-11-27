@@ -162,6 +162,21 @@ export interface SalonSettings {
   };
 }
 
+export interface PublicSalonInfo {
+  businessName: string;
+  address: string;
+  city: string;
+  country: string;
+  contactPhone: string;
+  contactEmail: string;
+  socialMedia: {
+    facebook?: string;
+    instagram?: string;
+    twitter?: string;
+  };
+  businessHours: Partial<SalonSettings['businessHours']>;
+}
+
 export interface NotificationItem {
   _id: string;
   recipient: string;

@@ -64,7 +64,11 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
     const { category } = req.query;
     const filter: any = { isActive: true };
     if (category) filter.category = category;
-    const gallery = await Gallery.find(filter).sort({ order: 1, createdAt: -1 });
+    res.set('Cache-Control', 'public, max-age=0, s-maxage=30, stale-while-revalidate=120');
+    const gallery = await Gallery.find(filter)
+      .select('_id title description image category tags order isActive createdAt updatedAt')
+      .sort({ order: 1, createdAt: -1 })
+      .lean();
     res.json({ success: true, data: gallery });
   } catch (error) {
     logSafeError('GALLERY Failed to load public gallery', error);

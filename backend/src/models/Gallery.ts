@@ -22,4 +22,6 @@ const gallerySchema = new Schema<IGallery>({
   isActive: { type: Boolean, default: true },
 }, { timestamps: true });
 
+gallerySchema.index({ isActive: 1, order: 1, createdAt: -1 });
+
 export default mongoose.model<IGallery>('Gallery', gallerySchema);

@@ -7,7 +7,7 @@ import { usePathname } from 'next/navigation';
 import { useAuth } from '../context/AuthContext';
 import { LayoutDashboard, Calendar, CalendarPlus, User as UserIcon, LogOut } from 'lucide-react';
 
-export const CustomerSidebar: React.FC = () => {
+export const CustomerSidebar: React.FC<{ onNavigate?: () => void }> = ({ onNavigate }) => {
   const pathname = usePathname();
   const { user, logout } = useAuth();
 
@@ -39,11 +39,13 @@ export const CustomerSidebar: React.FC = () => {
         <nav className="p-3 space-y-1">
           {links.map((link) => {
             const Icon = link.icon;
-            const isActive = pathname === link.href;
+            const isActive = pathname === link.href || pathname.startsWith(`${link.href}/`);
             return (
               <Link
                 key={link.name}
                 href={link.href}
+                onClick={onNavigate}
+                aria-current={isActive ? 'page' : undefined}
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                   isActive
                     ? 'bg-zinc-900 text-white shadow-sm'

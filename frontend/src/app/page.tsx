@@ -13,7 +13,6 @@ import {
   Calendar,
   Clock,
   ShieldCheck,
-  Star,
   Award,
   Scissors,
   ArrowRight,
@@ -25,37 +24,50 @@ export default function HomePage() {
   const [gallery, setGallery] = useState<GalleryDisplayItem[]>([]);
   const [servicesLoadError, setServicesLoadError] = useState(false);
   const [galleryLoadError, setGalleryLoadError] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [servicesLoading, setServicesLoading] = useState(true);
+  const [galleryLoading, setGalleryLoading] = useState(true);
+  const [servicesRetry, setServicesRetry] = useState(0);
+  const [galleryRetry, setGalleryRetry] = useState(0);
 
   useEffect(() => {
-    async function loadData() {
-      try {
-        const [servicesRes, galleryRes] = await Promise.allSettled([
-          serviceService.getServices(),
-          galleryService.getGallery(),
-        ]);
-        if (servicesRes.status === 'fulfilled' && servicesRes.value.success) {
-          setFeaturedServices(servicesRes.value.data.slice(0, 6));
-        } else {
-          setServicesLoadError(true);
-          console.error('Unable to load featured services.');
-        }
-        if (galleryRes.status === 'fulfilled' && galleryRes.value.success) {
-          setGallery(mergeGalleryItems(galleryRes.value.data).slice(0, 4));
-        } else {
-          setGalleryLoadError(true);
-          console.error('Unable to load featured gallery items.');
-        }
-      } catch (err) {
-        console.error('Error fetching home data:', err);
-        setServicesLoadError(true);
-        setGalleryLoadError(true);
-      } finally {
-        setLoading(false);
-      }
-    }
-    loadData();
-  }, []);
+    let active = true;
+    setServicesLoading(true);
+    setServicesLoadError(false);
+    serviceService.getServices()
+      .then((response) => {
+        if (!active) return;
+        if (response.success) setFeaturedServices(response.data.slice(0, 6));
+        else setServicesLoadError(true);
+      })
+      .catch((error) => {
+        console.error('Unable to load featured services:', error);
+        if (active) setServicesLoadError(true);
+      })
+      .finally(() => {
+        if (active) setServicesLoading(false);
+      });
+    return () => { active = false; };
+  }, [servicesRetry]);
+
+  useEffect(() => {
+    let active = true;
+    setGalleryLoading(true);
+    setGalleryLoadError(false);
+    galleryService.getGallery()
+      .then((response) => {
+        if (!active) return;
+        if (response.success) setGallery(mergeGalleryItems(response.data).slice(0, 4));
+        else setGalleryLoadError(true);
+      })
+      .catch((error) => {
+        console.error('Unable to load featured gallery items:', error);
+        if (active) setGalleryLoadError(true);
+      })
+      .finally(() => {
+        if (active) setGalleryLoading(false);
+      });
+    return () => { active = false; };
+  }, [galleryRetry]);
 
   return (
     <PublicLayout>
@@ -73,7 +85,7 @@ export default function HomePage() {
                 <span className="italic font-normal text-champagne-700">Effortless Elegance.</span>
               </h1>
               <p className="text-base sm:text-lg text-zinc-600 max-w-xl leading-relaxed">
-                Step into Iris Hair Cut and Salon — an oasis of quiet sophistication. Offering bespoke haircuts, signature color formulations, rejuvenating scalp therapies, and personalized beauty rituals crafted just for you.
+                Thoughtful hair and beauty services, a calm space to unwind, and an easy way to reserve a time that works for you.
               </p>
               <div className="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
                 <Link
@@ -92,21 +104,18 @@ export default function HomePage() {
                 </Link>
               </div>
 
-              {/* Trust Badges */}
-              <div className="pt-8 border-t border-zinc-100 grid grid-cols-3 gap-4">
+              <div className="pt-8 border-t border-zinc-100 grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
-                  <div className="font-serif text-2xl font-bold text-zinc-900">10+</div>
-                  <div className="text-xs text-zinc-500 uppercase tracking-wider font-medium">Years Excellence</div>
+                  <div className="text-sm font-semibold text-zinc-900">Personal consultation</div>
+                  <div className="mt-1 text-xs text-zinc-500">A service chosen around your needs</div>
                 </div>
                 <div>
-                  <div className="font-serif text-2xl font-bold text-zinc-900">5,000+</div>
-                  <div className="text-xs text-zinc-500 uppercase tracking-wider font-medium">Happy Clients</div>
+                  <div className="text-sm font-semibold text-zinc-900">Clear service menu</div>
+                  <div className="mt-1 text-xs text-zinc-500">Explore treatments and pricing online</div>
                 </div>
                 <div>
-                  <div className="font-serif text-2xl font-bold text-zinc-900">4.9 / 5.0</div>
-                  <div className="text-xs text-zinc-500 uppercase tracking-wider font-medium flex items-center gap-1">
-                    <Star className="w-3 h-3 fill-amber-400 text-amber-400" /> Client Rating
-                  </div>
+                  <div className="text-sm font-semibold text-zinc-900">Convenient booking</div>
+                  <div className="mt-1 text-xs text-zinc-500">Request your appointment online</div>
                 </div>
               </div>
             </div>
@@ -117,7 +126,7 @@ export default function HomePage() {
                 <div className="aspect-[4/5] rounded-2xl overflow-hidden shadow-2xl border-4 border-white bg-zinc-100">
                   <img
                     src="https://images.unsplash.com/photo-1560066984-138dadb4c035?auto=format&fit=crop&w=1000&q=80"
-                    alt="Iris Salon luxury styling experience"
+                    alt="Modern salon styling space"
                     className="w-full h-full object-cover"
                   />
                 </div>
@@ -127,8 +136,8 @@ export default function HomePage() {
                       <Scissors className="w-5 h-5 text-champagne-700" />
                     </div>
                     <div>
-                      <p className="text-xs font-semibold text-zinc-900">Master Stylists</p>
-                      <p className="text-[11px] text-zinc-500">Dedicated to individual beauty</p>
+                      <p className="text-xs font-semibold text-zinc-900">Thoughtful styling</p>
+                      <p className="text-[11px] text-zinc-500">A considered approach to every visit</p>
                     </div>
                   </div>
                 </div>
@@ -154,7 +163,23 @@ export default function HomePage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {featuredServices.length > 0 ? (
+            {servicesLoading ? (
+              Array.from({ length: 3 }, (_, index) => (
+                <div key={index} aria-hidden="true" className="rounded-xl border border-zinc-200/80 p-6 animate-pulse">
+                  <div className="flex justify-between">
+                    <div className="h-5 w-20 rounded bg-champagne-100" />
+                    <div className="h-5 w-16 rounded bg-zinc-100" />
+                  </div>
+                  <div className="mt-6 h-6 w-3/4 rounded bg-zinc-100" />
+                  <div className="mt-4 h-4 w-full rounded bg-zinc-100" />
+                  <div className="mt-2 h-4 w-2/3 rounded bg-zinc-100" />
+                  <div className="mt-8 border-t border-zinc-100 pt-5 flex justify-between">
+                    <div className="h-5 w-20 rounded bg-zinc-100" />
+                    <div className="h-5 w-16 rounded bg-champagne-100" />
+                  </div>
+                </div>
+              ))
+            ) : featuredServices.length > 0 ? (
               featuredServices.map((service) => (
                 <div
                   key={service._id}
@@ -194,11 +219,12 @@ export default function HomePage() {
               ))
             ) : (
               <div className="col-span-full rounded-xl border border-dashed border-zinc-200 py-12 text-center text-sm text-zinc-500">
-                {loading
-                  ? 'Loading services...'
-                  : servicesLoadError
-                    ? 'The service menu is temporarily unavailable.'
-                    : 'No services are currently available.'}
+                <p>{servicesLoadError ? 'The service menu is temporarily unavailable.' : 'No services are currently available.'}</p>
+                {servicesLoadError && (
+                  <button type="button" onClick={() => setServicesRetry((retry) => retry + 1)} className="mt-3 font-semibold text-zinc-900 underline underline-offset-4">
+                    Try again
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -225,7 +251,7 @@ export default function HomePage() {
               A Refined Salon Experience
             </h2>
             <p className="text-sm text-zinc-600">
-              We marry bespoke consultation, world-class organic formulations, and an environment of peaceful luxury.
+              A welcoming space to explore salon services, talk through your goals, and plan your visit.
             </p>
           </div>
 
@@ -234,9 +260,9 @@ export default function HomePage() {
               <div className="w-12 h-12 rounded-full bg-champagne-100 text-champagne-800 flex items-center justify-center">
                 <Award className="w-6 h-6 text-champagne-700" />
               </div>
-              <h3 className="font-serif text-lg font-bold text-zinc-900">Certified Stylists</h3>
+              <h3 className="font-serif text-lg font-bold text-zinc-900">Careful attention</h3>
               <p className="text-xs text-zinc-600 leading-relaxed">
-                Our stylists hold advanced certifications in precision cutting, color chemistry, and modern trend styling.
+                Discuss the look you want and the services that best suit your personal style.
               </p>
             </div>
 
@@ -244,9 +270,9 @@ export default function HomePage() {
               <div className="w-12 h-12 rounded-full bg-champagne-100 text-champagne-800 flex items-center justify-center">
                 <ShieldCheck className="w-6 h-6 text-champagne-700" />
               </div>
-              <h3 className="font-serif text-lg font-bold text-zinc-900">Premium Formulations</h3>
+              <h3 className="font-serif text-lg font-bold text-zinc-900">A considered menu</h3>
               <p className="text-xs text-zinc-600 leading-relaxed">
-                We use strictly cruelty-free, salon-grade hair colors and organic nourishment products for radiant health.
+                Review available treatments, service details, and pricing before you book.
               </p>
             </div>
 
@@ -254,9 +280,9 @@ export default function HomePage() {
               <div className="w-12 h-12 rounded-full bg-champagne-100 text-champagne-800 flex items-center justify-center">
                 <Heart className="w-6 h-6 text-champagne-700" />
               </div>
-              <h3 className="font-serif text-lg font-bold text-zinc-900">Personalized Consultations</h3>
+              <h3 className="font-serif text-lg font-bold text-zinc-900">Your visit, your way</h3>
               <p className="text-xs text-zinc-600 leading-relaxed">
-                Every service begins with a one-on-one session discussing your routine, goals, and customized look.
+                Choose an appointment time online and share any preferences with the salon.
               </p>
             </div>
           </div>
@@ -280,7 +306,11 @@ export default function HomePage() {
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {gallery.length > 0 ? (
+            {galleryLoading ? (
+              Array.from({ length: 4 }, (_, index) => (
+                <div key={index} aria-hidden="true" className="aspect-square rounded-xl bg-zinc-100 animate-pulse" />
+              ))
+            ) : gallery.length > 0 ? (
               gallery.map((item) => (
                 <div key={item._id} className="group relative aspect-square rounded-xl overflow-hidden bg-zinc-100 shadow-sm">
                   <img
@@ -296,11 +326,12 @@ export default function HomePage() {
               ))
             ) : (
               <div className="col-span-full rounded-xl border border-dashed border-zinc-200 py-12 text-center text-sm text-zinc-500">
-                {loading
-                  ? 'Loading gallery...'
-                  : galleryLoadError
-                    ? 'The gallery is temporarily unavailable.'
-                    : 'No gallery photos are available yet.'}
+                <p>{galleryLoadError ? 'The gallery is temporarily unavailable.' : 'No gallery photos are available yet.'}</p>
+                {galleryLoadError && (
+                  <button type="button" onClick={() => setGalleryRetry((retry) => retry + 1)} className="mt-3 font-semibold text-zinc-900 underline underline-offset-4">
+                    Try again
+                  </button>
+                )}
               </div>
             )}
           </div>
