@@ -20,11 +20,14 @@ import {
 } from 'lucide-react';
 
 export default function CustomerDashboardPage() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Do not fetch until auth has fully initialized
+    if (authLoading) return;
+
     async function loadData() {
       try {
         const res = await appointmentService.getAppointments({ limit: 5 });
@@ -38,7 +41,7 @@ export default function CustomerDashboardPage() {
       }
     }
     loadData();
-  }, []);
+  }, [authLoading]);
 
   const upcoming = appointments.filter((a) => ['pending', 'reschedule_requested', 'confirmed', 'accepted'].includes(a.status));
   const past = appointments.filter((a) => ['completed', 'cancelled', 'rejected'].includes(a.status));

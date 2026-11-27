@@ -103,9 +103,12 @@ router.post('/', authenticate, [
     await appointment.save();
     // Notify Super Admin; sub-admin in-app notifications remain unchanged
     const admins = await User.find({ role: { $in: ['super_admin', 'sub_admin'] }, isActive: true });
+    // Track which emails already received admin notification to prevent duplicates
+    const notifiedAdminEmails = new Set<string>();
     for (const admin of admins) {
       await Notification.create({ recipient: admin._id, type: 'new_booking', title: 'New Appointment Request', message: `New booking ${bookingReference} for ${service.name}.`, appointment: appointment._id });
       if (admin.role === 'super_admin') {
+        notifiedAdminEmails.add(admin.email.toLowerCase());
         await sendEmail({
           to: admin.email,
           subject: `New Booking Request — ${bookingReference}`,
@@ -118,11 +121,35 @@ router.post('/', authenticate, [
             date: appointmentDate,
             time: startTime,
             barberName,
+            price: service.price,
+            appointmentId: appointment._id.toString(),
           }),
           deduplicationKey: `appointment:${bookingReference}:admin_new`,
           type: 'appointment_admin_new',
         });
       }
+    }
+    // Also notify the configured ADMIN_EMAIL if not already notified above
+    const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
+    if (adminEmail && !notifiedAdminEmails.has(adminEmail)) {
+      await sendEmail({
+        to: adminEmail,
+        subject: `New Booking Request — ${bookingReference}`,
+        html: newAppointmentAdminTemplate({
+          customerName: customer?.fullName || 'Customer',
+          customerEmail: customer?.email,
+          customerPhone: customer?.phone,
+          bookingRef: bookingReference,
+          serviceName: service.name,
+          date: appointmentDate,
+          time: startTime,
+          barberName,
+          price: service.price,
+          appointmentId: appointment._id.toString(),
+        }),
+        deduplicationKey: `appointment:${bookingReference}:admin_email_new`,
+        type: 'appointment_admin_new',
+      });
     }
     res.status(201).json({ success: true, message: 'Appointment booked successfully.', data: appointment });
   } catch (error) {

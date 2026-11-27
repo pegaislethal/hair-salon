@@ -122,11 +122,12 @@ export const appointmentReminderTemplate = (data: AppointmentEmailData & { remin
   details([['Booking reference', data.bookingRef], ['Service', data.serviceName], ['Date', data.date], ['Time', data.time]])
 );
 
-export const newAppointmentAdminTemplate = (data: AppointmentEmailData & { customerEmail?: string; customerPhone?: string }): string => layout(
+export const newAppointmentAdminTemplate = (data: AppointmentEmailData & { customerEmail?: string; customerPhone?: string; appointmentId?: string }): string => layout(
   'New appointment request',
   'A new appointment request was submitted and requires review.',
   details([
     ['Booking reference', data.bookingRef],
+    ...(data.appointmentId ? [['Appointment ID', data.appointmentId] as [string, unknown]] : []),
     ['Customer', data.customerName],
     ['Customer email', data.customerEmail || '-'],
     ['Customer phone', data.customerPhone || '-'],
@@ -134,6 +135,8 @@ export const newAppointmentAdminTemplate = (data: AppointmentEmailData & { custo
     ['Barber', data.barberName || 'Lycan'],
     ['Date', data.date],
     ['Time', data.time],
+    ['Price', data.price ? `NPR ${data.price}` : 'As listed'],
+    ['Status', 'PENDING'],
   ])
 );
 

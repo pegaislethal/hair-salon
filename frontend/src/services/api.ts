@@ -54,10 +54,17 @@ api.interceptors.response.use(
           }
         }
       } catch (refreshErr) {
+        // Refresh failed — clear session and redirect to login
         if (typeof window !== 'undefined') {
           localStorage.removeItem('iris_access_token');
           localStorage.removeItem('iris_refresh_token');
           localStorage.removeItem('iris_user');
+          // Only redirect if we are on a protected page (not already on auth pages)
+          const authPages = ['/login', '/register', '/forgot-password', '/reset-password', '/verify-email'];
+          const isAuthPage = authPages.some((p) => window.location.pathname.startsWith(p));
+          if (!isAuthPage) {
+            window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname + window.location.search)}`;
+          }
         }
       }
     }
