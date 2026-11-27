@@ -118,10 +118,25 @@ export default function AdminRecruitmentPage() {
           {error && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
           <section className="flex flex-col justify-between gap-4 rounded-xl border border-zinc-200 bg-white p-5 sm:flex-row sm:items-center">
             <div>
-              <h2 className="font-serif text-xl font-bold">Hiring Status</h2>
-              <p className="mt-1 text-sm text-zinc-500">When disabled, the public careers page displays the closed-hiring message.</p>
+              <div className="flex items-center gap-3">
+                <h2 className="font-serif text-xl font-bold">Hiring Status</h2>
+                <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wider ${isHiring ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-zinc-100 text-zinc-500 border border-zinc-200'}`}>
+                  <span className={`w-2 h-2 rounded-full ${isHiring ? 'bg-emerald-500' : 'bg-zinc-400'}`}></span>
+                  {isHiring ? 'Currently Hiring (Live)' : 'Hiring Closed'}
+                </span>
+              </div>
+              <p className="mt-1 text-sm text-zinc-500">
+                {isHiring
+                  ? 'Your active vacancies are currently visible on the public "Join Our Team" page.'
+                  : 'Hiring is currently OFF. The public "Join Our Team" page displays a closed-hiring notice.'}
+              </p>
             </div>
-            <Button onClick={toggleHiring}>{isHiring ? 'Turn Hiring Off' : 'Turn Hiring On'}</Button>
+            <Button
+              onClick={toggleHiring}
+              className={isHiring ? 'bg-rose-600 hover:bg-rose-700 text-white' : 'bg-emerald-700 hover:bg-emerald-800 text-white'}
+            >
+              {isHiring ? 'Turn Hiring Off' : 'Turn Hiring On'}
+            </Button>
           </section>
 
           <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.8fr)]">

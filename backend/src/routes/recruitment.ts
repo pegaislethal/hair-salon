@@ -149,6 +149,7 @@ router.get('/admin/vacancies', authenticate, isAdminOrSubAdmin, async (_req: Aut
   }
 });
 
+// @route   POST /api/recruitment/admin/vacancies
 router.post('/admin/vacancies', authenticate, isSuperAdmin, [
   body('title').trim().notEmpty().isLength({ max: 120 }),
   body('description').trim().notEmpty().isLength({ max: 5000 }),
@@ -166,6 +167,8 @@ router.post('/admin/vacancies', authenticate, isSuperAdmin, [
       requirements: req.body.requirements || [],
       applicationDeadline: req.body.applicationDeadline || undefined,
     });
+    // Ensure hiring is turned on when a vacancy is created so it is immediately visible
+    await HiringSettings.findOneAndUpdate({}, { isHiring: true }, { upsert: true, returnDocument: 'after' });
     res.status(201).json({ success: true, data: vacancy });
   } catch (error) {
     logSafeError('RECRUITMENT Failed to create vacancy', error);
