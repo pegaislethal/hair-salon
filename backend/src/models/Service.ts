@@ -6,6 +6,11 @@ export interface IService extends Document {
   description: string;
   image?: string;
   price: number;
+  priceType?: 'fixed' | 'range' | 'starting';
+  maxPrice?: number;
+  priceUnit?: string;
+  categoryDescription?: string;
+  includedItems?: string[];
   duration: number;
   bufferDuration: number;
   category: string;
@@ -19,6 +24,11 @@ const serviceSchema = new Schema<IService>({
   description: { type: String, required: true, maxlength: 1000 },
   image: { type: String },
   price: { type: Number, required: true, min: 0 },
+  priceType: { type: String, enum: ['fixed', 'range', 'starting'], default: 'fixed' },
+  maxPrice: { type: Number, min: 0 },
+  priceUnit: { type: String, trim: true },
+  categoryDescription: { type: String, trim: true },
+  includedItems: [{ type: String, trim: true }],
   duration: { type: Number, required: true, min: 5, comment: 'Duration in minutes' },
   bufferDuration: { type: Number, default: 15, min: 0, comment: 'Buffer time in minutes between appointments' },
   category: { type: String, default: 'General' },

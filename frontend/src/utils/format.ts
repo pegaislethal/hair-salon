@@ -1,6 +1,29 @@
 export function formatPrice(amount?: number): string {
-  if (amount === undefined || amount === null) return 'NPR 0';
-  return `NPR ${amount.toLocaleString()}`;
+  if (amount === undefined || amount === null) return 'Rs. 0';
+  return `Rs. ${amount.toLocaleString()}`;
+}
+
+export interface ServicePriceFormatOptions {
+  price: number;
+  priceType?: 'fixed' | 'range' | 'starting';
+  maxPrice?: number;
+  priceUnit?: string;
+}
+
+export function formatServicePrice(service?: ServicePriceFormatOptions | null): string {
+  if (!service) return 'Rs. 0';
+  const { price, priceType = 'fixed', maxPrice, priceUnit } = service;
+
+  if (priceType === 'range' && maxPrice && maxPrice > price) {
+    return `Rs. ${price.toLocaleString()} - ${maxPrice.toLocaleString()}`;
+  }
+  if (priceType === 'starting') {
+    return `Starting from Rs. ${price.toLocaleString()}`;
+  }
+  if (priceUnit) {
+    return `Rs. ${price.toLocaleString()} ${priceUnit}`;
+  }
+  return `Rs. ${price.toLocaleString()}`;
 }
 
 export function formatDate(dateStr?: string | Date): string {

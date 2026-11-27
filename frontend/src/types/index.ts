@@ -20,6 +20,11 @@ export interface Service {
   description: string;
   image?: string;
   price: number;
+  priceType?: 'fixed' | 'range' | 'starting';
+  maxPrice?: number;
+  priceUnit?: string;
+  categoryDescription?: string;
+  includedItems?: string[];
   duration: number; // in minutes
   bufferDuration: number;
   category: string;

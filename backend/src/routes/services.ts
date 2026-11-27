@@ -17,7 +17,7 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
       res.set('Cache-Control', 'public, max-age=0, s-maxage=30, stale-while-revalidate=120');
     }
     const services = await Service.find(filter)
-      .select('_id name description image price duration bufferDuration category isActive createdAt updatedAt')
+      .select('_id name description image price priceType maxPrice priceUnit categoryDescription includedItems duration bufferDuration category isActive createdAt updatedAt')
       .sort({ category: 1, name: 1 })
       .lean();
     res.json({ success: true, data: services });
@@ -44,6 +44,11 @@ router.post('/', authenticate, isSuperAdmin, [
   body('description').trim().notEmpty().withMessage('Description is required'),
   body('price').isNumeric().withMessage('Price must be a number'),
   body('duration').isInt({ min: 5 }).withMessage('Duration must be at least 5 minutes'),
+  body('priceType').optional().isIn(['fixed', 'range', 'starting']).withMessage('Invalid price type'),
+  body('maxPrice').optional().isNumeric().withMessage('Max price must be a number'),
+  body('priceUnit').optional().isString(),
+  body('categoryDescription').optional().isString(),
+  body('includedItems').optional().isArray(),
 ], async (req: Request, res: Response): Promise<void> => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) { res.status(400).json({ success: false, errors: errors.array() }); return; }

@@ -19,7 +19,7 @@ import {
   saveBookingDraft,
 } from '../../utils/bookingDraft';
 import { Button } from '../../components/ui/Button';
-import { formatPrice, formatTime12 } from '../../utils/format';
+import { formatPrice, formatServicePrice, formatTime12 } from '../../utils/format';
 import {
   Clock,
   CheckCircle2,
@@ -60,18 +60,7 @@ const getTomorrowDate = (): string => {
 };
 
 const getServiceCategory = (service: Service): string => {
-  const name = service.name.toLowerCase();
-  const category = (service.category || '').trim();
-  const normalizedCategory = category.toLowerCase();
-  const searchable = `${name} ${normalizedCategory}`;
-
-  if (/\b(package|combo)\b/.test(searchable)) return 'Packages and Combos';
-  if (/\bbeard\b/.test(name) || /beard|groom/.test(normalizedCategory)) return 'Beard Services';
-  if (/color|colour|highlight|balayage/.test(searchable)) return 'Hair Coloring';
-  if (/treatment|spa|wash|straighten|keratin/.test(searchable)) return 'Hair Treatments';
-  if (/styling|blow.?dry/.test(searchable)) return 'Hair Styling';
-  if (/hair.?cut|fade|\bcut\b/.test(name) || normalizedCategory === 'hair') return 'Haircuts';
-  return category || 'Other Services';
+  return service.category || 'General';
 };
 
 const getCategoryIcon = (category: string) => {
@@ -357,8 +346,10 @@ function BookingWizard() {
               </span>
             </div>
             <div className="flex justify-between text-xs">
-              <span className="text-zinc-500">Price Snapshot</span>
-              <span className="font-bold text-zinc-900">{formatPrice(selectedService?.price)}</span>
+              <span className="text-zinc-500">
+                {selectedService?.priceType === 'starting' ? 'Starting Price' : selectedService?.priceType === 'range' ? 'Price Range' : 'Price Snapshot'}
+              </span>
+              <span className="font-bold text-zinc-900">{formatServicePrice(selectedService)}</span>
             </div>
           </div>
 
@@ -524,7 +515,7 @@ function BookingWizard() {
                                 <span className="flex items-center gap-1.5 text-zinc-500">
                                   <Clock className="h-3.5 w-3.5" /> {service.duration} min
                                 </span>
-                                <span className="font-bold text-zinc-900">{formatPrice(service.price)}</span>
+                                <span className="font-bold text-zinc-900">{formatServicePrice(service)}</span>
                               </div>
                             </div>
                           </button>
@@ -543,11 +534,18 @@ function BookingWizard() {
                       <p className="mt-1 truncate font-serif text-base font-bold text-zinc-900">
                         {selectedService.name}
                       </p>
+                      {selectedService.priceType && selectedService.priceType !== 'fixed' && (
+                        <p className="text-[11px] text-zinc-500 mt-0.5 italic">
+                          * Note: Final rate is determined based on hair length, thickness, or consultation.
+                        </p>
+                      )}
                     </div>
                     <div className="grid grid-cols-2 gap-4 sm:shrink-0 sm:gap-6">
                       <div>
-                        <span className="block text-[10px] uppercase tracking-wider text-zinc-500">Total Price</span>
-                        <span className="font-bold text-zinc-900">{formatPrice(selectedService.price)}</span>
+                        <span className="block text-[10px] uppercase tracking-wider text-zinc-500">
+                          {selectedService.priceType === 'starting' ? 'Starting Rate' : selectedService.priceType === 'range' ? 'Price Range' : 'Service Price'}
+                        </span>
+                        <span className="font-bold text-zinc-900">{formatServicePrice(selectedService)}</span>
                       </div>
                       <div>
                         <span className="block text-[10px] uppercase tracking-wider text-zinc-500">Estimated Time</span>
@@ -678,9 +676,14 @@ function BookingWizard() {
                     <div>
                       <h4 className="font-serif font-bold text-lg text-zinc-900">{selectedService?.name}</h4>
                       <p className="text-xs text-zinc-500 mt-0.5">{selectedService?.description}</p>
+                      {selectedService?.priceType && selectedService.priceType !== 'fixed' && (
+                        <p className="text-[11px] text-champagne-800 font-medium mt-1 italic">
+                          * Variable price: Final rate confirmed at salon consultation based on length/volume.
+                        </p>
+                      )}
                     </div>
                     <span className="font-serif text-lg font-bold text-zinc-900">
-                      {formatPrice(selectedService?.price)}
+                      {formatServicePrice(selectedService)}
                     </span>
                   </div>
 
